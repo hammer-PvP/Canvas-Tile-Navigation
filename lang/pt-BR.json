@@ -105,8 +105,14 @@
   "CTN.Hover.Gesture.MiddleClick": "Clique do meio",
   "CTN.Hover.Gesture.AltClick": "Alt + clique",
   "CTN.Hover.Gesture.CtrlClick": "Ctrl + clique",
-  "CTN.Hover.GMCommit": "{gesture} para levar todos os players para {target}.",
+  "CTN.Hover.GMCommit": "{gesture} para levar o grupo para {target}.",
   "CTN.Hover.GMPreview": "Shift + {gesture} para visualizar {target}.",
   "CTN.Hover.PlayerTravel": "{gesture} para viajar para {target}.",
-  "CTN.Hover.PlayerTooFar": "Aproxime o Token do seu personagem para usar esta rota."
+  "CTN.Hover.PlayerTooFar": "Aproxime o Token do seu personagem para usar esta rota.",
+  "CTN.Notifications.NavigationBusy": "Uma transição de Scene já está em andamento.",
+  "CTN.Notifications.NavigationLoading": "Aguarde a Scene atual terminar de carregar antes de navegar novamente.",
+  "CTN.Notifications.NavigationFailed": "O Canvas Tile Navigation não conseguiu concluir a transição de Scene.",
+  "CTN.Notifications.NavigationTimeout": "A Scene de destino não terminou de carregar a tempo. Os Tokens da origem foram mantidos.",
+  "CTN.Notifications.NoCharacter": "Nenhum Actor de personagem atribuído foi encontrado para este player.",
+  "CTN.Notifications.TokenTransferFailed": "O Token do seu personagem não pôde ser preparado na Scene de destino. O Token da origem foi mantido."
 }

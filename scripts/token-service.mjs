@@ -1,12 +1,10 @@
 import { MODULE_ID } from "./constants.mjs";
+import {
+  getGroupRepresentationForActor,
+  getUserActor
+} from "./party-service.mjs";
 
-export function getUserActor(user) {
-  const character = user?.character;
-  if (!character) return null;
-  if (character.documentName === "Actor") return character;
-  const id = character.id ?? character;
-  return game.actors.get(id) ?? null;
-}
+export { getUserActor };
 
 export function actorTokensInScene(actor, scene) {
   if (!actor || !scene) return [];
@@ -66,15 +64,22 @@ function tileBounds(tile) {
   };
 }
 
+function proximityTokensForUser(user, scene) {
+  const actor = getUserActor(user);
+  if (!actor) return [];
+
+  const groupRepresentation = getGroupRepresentationForActor(scene, actor);
+  if (groupRepresentation?.token) return [groupRepresentation.token];
+
+  return actorTokensInScene(actor, scene);
+}
+
 export function isUserWithinNavigationRange(user, tile) {
   if (user?.isGM) return true;
   const scene = tile?.parent;
   if (!scene) return false;
 
-  const actor = getUserActor(user);
-  if (!actor) return false;
-
-  const tokens = actorTokensInScene(actor, scene);
+  const tokens = proximityTokensForUser(user, scene);
   if (!tokens.length) return false;
 
   const tBounds = tileBounds(tile);
@@ -180,59 +185,72 @@ function pickFreePosition({ center, size, offsets, occupied, sceneRect }) {
     return rect;
   }
 
-  // Best effort fallback: if no collision-free candidate exists, use the
-  // Arrival Point itself rather than failing navigation.
   return positionRect(center, { x: 0, y: 0 }, size);
 }
 
-async function createTokenFromSource(targetScene, sourceToken, dataPosition) {
-  const data = sourceToken.toObject();
+async function actorTokenPixelSize(actor, targetScene, existingToken = null) {
+  if (existingToken) {
+    const size = existingToken.getSize?.() ?? tokenBounds(existingToken);
+    return {
+      width: Math.max(1, Number(size.width) || 1),
+      height: Math.max(1, Number(size.height) || 1)
+    };
+  }
+
+  try {
+    const ephemeral = await actor.getTokenDocument({}, { parent: targetScene });
+    const size = ephemeral.getSize?.();
+    if (size) {
+      return {
+        width: Math.max(1, Number(size.width) || 1),
+        height: Math.max(1, Number(size.height) || 1)
+      };
+    }
+
+    const gridSize = Number(targetScene.grid?.size) || 100;
+    return {
+      width: Math.max(1, Number(ephemeral.width) || 1) * gridSize,
+      height: Math.max(1, Number(ephemeral.height) || 1) * gridSize
+    };
+  } catch (_error) {
+    const gridSize = Number(targetScene.grid?.size) || 100;
+    return { width: gridSize, height: gridSize };
+  }
+}
+
+async function createTokenFromActor(targetScene, actor, dataPosition) {
+  const tokenDocument = await actor.getTokenDocument({
+    x: dataPosition.x,
+    y: dataPosition.y
+  }, { parent: targetScene });
+
+  const data = tokenDocument.toObject();
   delete data._id;
   delete data._stats;
   data.x = dataPosition.x;
   data.y = dataPosition.y;
+
   const [created] = await targetScene.createEmbeddedDocuments("Token", [data]);
   return created ?? null;
 }
 
-function buildPlayerMoveEntries(users, sourceScene, targetScene) {
+async function buildActorEntries(actors, targetScene) {
   const entries = [];
-
-  for (const user of users) {
-    if (!user || user.isGM) continue;
-
-    const actor = getUserActor(user);
+  for (const actor of actors) {
     if (!actor) continue;
-
-    const sourceToken = actorTokensInScene(actor, sourceScene)[0] ?? null;
-    if (!sourceToken) continue;
-
     const targetToken = actorTokensInScene(actor, targetScene)[0] ?? null;
-    const sizeSource = targetToken ?? sourceToken;
-    const size = sizeSource.getSize?.() ?? tokenBounds(sizeSource);
-
-    entries.push({
-      user,
-      actor,
-      sourceToken,
-      targetToken,
-      size: {
-        width: Math.max(1, Number(size.width) || 1),
-        height: Math.max(1, Number(size.height) || 1)
-      }
-    });
+    const size = await actorTokenPixelSize(actor, targetScene, targetToken);
+    entries.push({ actor, targetToken, size });
   }
-
   return entries;
 }
 
-async function placeEntries(entries, targetScene, arrivalTile) {
-  if (!entries.length || !arrivalTile) return [];
+async function placeActorEntries(entries, targetScene, arrivalTile) {
+  if (!entries.length || !arrivalTile) {
+    return { tokens: [], successfulActorIds: new Set(), failedActorIds: new Set(entries.map((entry) => entry.actor.id)) };
+  }
 
-  const movingTargetIds = new Set(
-    entries.map((entry) => entry.targetToken?.id).filter(Boolean)
-  );
-
+  const movingTargetIds = new Set(entries.map((entry) => entry.targetToken?.id).filter(Boolean));
   const occupied = [...targetScene.tokens]
     .filter((token) => !movingTargetIds.has(token.id))
     .map(tokenBounds);
@@ -240,7 +258,9 @@ async function placeEntries(entries, targetScene, arrivalTile) {
   const center = arrivalCenter(arrivalTile);
   const offsets = candidateOffsets(targetScene);
   const bounds = sceneBounds(targetScene);
-  const results = [];
+  const tokens = [];
+  const successfulActorIds = new Set();
+  const failedActorIds = new Set();
 
   for (const entry of entries) {
     const rect = pickFreePosition({
@@ -257,44 +277,81 @@ async function placeEntries(entries, targetScene, arrivalTile) {
         await entry.targetToken.update({ x: rect.x, y: rect.y });
         token = entry.targetToken;
       } else {
-        token = await createTokenFromSource(targetScene, entry.sourceToken, rect);
+        token = await createTokenFromActor(targetScene, entry.actor, rect);
       }
 
-      if (token) {
-        const placed = tokenBounds(token);
-        placed.x = rect.x;
-        placed.y = rect.y;
-        occupied.push(placed);
-        results.push(token);
-      }
+      if (!token) throw new Error("Token creation returned no document");
+
+      const placed = tokenBounds(token);
+      placed.x = rect.x;
+      placed.y = rect.y;
+      occupied.push(placed);
+      tokens.push(token);
+      successfulActorIds.add(entry.actor.id);
     } catch (error) {
-      console.warn(`${MODULE_ID} | Could not place token for ${entry.user?.name ?? entry.user?.id}`, error);
+      failedActorIds.add(entry.actor.id);
+      console.warn(`${MODULE_ID} | Could not materialize ${entry.actor.name ?? entry.actor.id} in ${targetScene.name}`, error);
     }
   }
 
-  return results;
+  return { tokens, successfulActorIds, failedActorIds };
 }
 
-export async function placeUserAtArrival(user, sourceScene, targetScene, arrivalTile) {
-  if (!user || !sourceScene || !targetScene || !arrivalTile) return null;
-  const entries = buildPlayerMoveEntries([user], sourceScene, targetScene);
-  const [token] = await placeEntries(entries, targetScene, arrivalTile);
-  return token ?? null;
+export async function reconcileActorsAtArrival(actors, targetScene, arrivalTile) {
+  if (!targetScene || !arrivalTile) {
+    return { tokens: [], successfulActorIds: new Set(), failedActorIds: new Set((actors ?? []).map((actor) => actor.id)) };
+  }
+  const entries = await buildActorEntries(actors ?? [], targetScene);
+  return placeActorEntries(entries, targetScene, arrivalTile);
 }
 
-export async function placeUsersAtArrival(users, sourceScene, targetScene, arrivalTile) {
-  if (!arrivalTile) return [];
-  const entries = buildPlayerMoveEntries(users, sourceScene, targetScene);
-  return placeEntries(entries, targetScene, arrivalTile);
+export async function repositionExistingTokenAtArrival(token, targetScene, arrivalTile) {
+  if (!token || !targetScene || !arrivalTile) return false;
+
+  const size = token.getSize?.() ?? tokenBounds(token);
+  const occupied = [...targetScene.tokens]
+    .filter((other) => other.id !== token.id)
+    .map(tokenBounds);
+
+  const rect = pickFreePosition({
+    center: arrivalCenter(arrivalTile),
+    size: {
+      width: Math.max(1, Number(size.width) || 1),
+      height: Math.max(1, Number(size.height) || 1)
+    },
+    offsets: candidateOffsets(targetScene),
+    occupied,
+    sceneRect: sceneBounds(targetScene)
+  });
+
+  try {
+    await token.update({ x: rect.x, y: rect.y });
+    return true;
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not reposition group token ${token.name ?? token.id}`, error);
+    return false;
+  }
+}
+
+export async function deleteActorTokensFromScene(scene, actorIds) {
+  if (!scene || !actorIds?.size) return [];
+
+  const ids = [...scene.tokens]
+    .filter((token) => actorIds.has(token.baseActor?.id ?? token.actorId))
+    .filter((token) => (token.baseActor ?? game.actors.get(token.actorId))?.type !== "group")
+    .map((token) => token.id);
+
+  if (!ids.length) return [];
+
+  try {
+    await scene.deleteEmbeddedDocuments("Token", ids);
+    return ids;
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not clean travelling Tokens from ${scene.name}`, error);
+    return [];
+  }
 }
 
 export function activeNonGMPlayers() {
   return [...game.users].filter((user) => user.active && !user.isGM);
-}
-
-export function activeNonGMPlayersInScene(scene) {
-  return activeNonGMPlayers().filter((user) => {
-    const actor = getUserActor(user);
-    return Boolean(actor && actorTokensInScene(actor, scene).length);
-  });
 }

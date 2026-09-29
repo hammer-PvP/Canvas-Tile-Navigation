@@ -105,8 +105,14 @@
   "CTN.Hover.Gesture.MiddleClick": "Middle-click",
   "CTN.Hover.Gesture.AltClick": "Alt + click",
   "CTN.Hover.Gesture.CtrlClick": "Ctrl + click",
-  "CTN.Hover.GMCommit": "{gesture} to move all players to {target}.",
+  "CTN.Hover.GMCommit": "{gesture} to move the party to {target}.",
   "CTN.Hover.GMPreview": "Shift + {gesture} to preview {target}.",
   "CTN.Hover.PlayerTravel": "{gesture} to travel to {target}.",
-  "CTN.Hover.PlayerTooFar": "Move your character Token closer to use this route."
+  "CTN.Hover.PlayerTooFar": "Move your character Token closer to use this route.",
+  "CTN.Notifications.NavigationBusy": "A Scene transition is already in progress.",
+  "CTN.Notifications.NavigationLoading": "Wait for the current Scene to finish loading before navigating again.",
+  "CTN.Notifications.NavigationFailed": "Canvas Tile Navigation could not complete the Scene transition.",
+  "CTN.Notifications.NavigationTimeout": "The destination Scene did not finish loading in time. Source Tokens were kept.",
+  "CTN.Notifications.NoCharacter": "No assigned character Actor could be found for this player.",
+  "CTN.Notifications.TokenTransferFailed": "Your character Token could not be prepared in the destination Scene. The source Token was kept."
 }

@@ -7,6 +7,7 @@ import { registerTileConfigHooks } from "./tile-config.mjs";
 import { registerArrivalControls } from "./arrival-service.mjs";
 import { initializeRoutes, registerRouteHooks } from "./route-service.mjs";
 import { registerLabelHooks } from "./label-service.mjs";
+import { initializePartyProvider, registerPartyHooks } from "./party-service.mjs";
 
 Hooks.once("init", () => {
   console.log(`${MODULE_ID} | Initializing`);
@@ -16,11 +17,13 @@ Hooks.once("init", () => {
   registerArrivalControls();
   registerRouteHooks();
   registerLabelHooks();
+  registerPartyHooks();
 });
 
 Hooks.once("ready", async () => {
   initializeNavigationSocket();
   bindSceneDropCapture();
+  await initializePartyProvider();
   await initializeRoutes();
   console.log(`${MODULE_ID} | Ready`);
 });
