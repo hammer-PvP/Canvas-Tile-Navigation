@@ -55,30 +55,36 @@ function canvasPoint(clientX, clientY) {
 }
 
 function containsPoint(tileDocument, point) {
-  const originX = Number(tileDocument.x) || 0;
-  const originY = Number(tileDocument.y) || 0;
-  const width = Math.abs(Number(tileDocument.width) || 0);
-  const height = Math.abs(Number(tileDocument.height) || 0);
+  // Foundry V14 already exposes the actual rectangle shape for a TileDocument.
+  // Using its native point test keeps CTN aligned with the full visible Tile,
+  // including anchor/origin and rotation.
+  if (tileDocument?.shape?.testPoint) {
+    try {
+      return Boolean(tileDocument.shape.testPoint(point));
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Native Tile shape hit-test failed; using fallback`, error);
+    }
+  }
+
+  // Defensive fallback. V14 commonly stores the anchor with texture data, while
+  // some API surfaces expose it directly on the Tile document.
+  const originX = Number(tileDocument?.x) || 0;
+  const originY = Number(tileDocument?.y) || 0;
+  const width = Math.abs(Number(tileDocument?.width) || 0);
+  const height = Math.abs(Number(tileDocument?.height) || 0);
   if (!width || !height) return false;
 
-  // Foundry V14 positions Tile meshes at TileDocument (x, y). The Tile's
-  // top-level anchorX/anchorY determine where that origin lies inside the
-  // rectangle. The default 0.5/0.5 therefore means (x, y) is its center.
-  const anchorX = Number.isFinite(Number(tileDocument.anchorX))
-    ? Number(tileDocument.anchorX)
-    : 0.5;
-  const anchorY = Number.isFinite(Number(tileDocument.anchorY))
-    ? Number(tileDocument.anchorY)
-    : 0.5;
+  const rawAnchorX = tileDocument?.texture?.anchorX ?? tileDocument?.anchorX ?? 0.5;
+  const rawAnchorY = tileDocument?.texture?.anchorY ?? tileDocument?.anchorY ?? 0.5;
+  const anchorX = Number.isFinite(Number(rawAnchorX)) ? Number(rawAnchorX) : 0.5;
+  const anchorY = Number.isFinite(Number(rawAnchorY)) ? Number(rawAnchorY) : 0.5;
 
   const left = -(width * anchorX);
   const top = -(height * anchorY);
   const right = left + width;
   const bottom = top + height;
 
-  // Transform the Canvas point into the Tile's local, unrotated coordinate
-  // system around the document origin.
-  const angle = -(Number(tileDocument.rotation) || 0) * (Math.PI / 180);
+  const angle = -(Number(tileDocument?.rotation) || 0) * (Math.PI / 180);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const dx = point.x - originX;

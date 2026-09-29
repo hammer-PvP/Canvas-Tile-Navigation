@@ -60,13 +60,18 @@ export function registerSettings() {
     default: ICONS.ARROW
   });
 
+  const ColorField = foundry?.data?.fields?.ColorField;
+  const iconTintType = ColorField
+    ? new ColorField({ nullable: false })
+    : String;
+
   game.settings.register(MODULE_ID, "defaultIconTint", {
     name: "CTN.Settings.DefaultIconTint.Name",
     hint: "CTN.Settings.DefaultIconTint.Hint",
     scope: "world",
     config: true,
     restricted: true,
-    type: new foundry.fields.ColorField({ nullable: false }),
+    type: iconTintType,
     default: "#ffffff"
   });
 

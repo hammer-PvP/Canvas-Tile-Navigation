@@ -69,6 +69,26 @@ function getNavigationTileSize() {
   return Number.isFinite(size) && size > 0 ? Math.round(size) : 100;
 }
 
+async function applyDefaultIconTint(tileDocument, tint) {
+  if (!tileDocument || !tint) return;
+
+  const candidatePaths = ["texture.tint", "tint"];
+  const tintPath = candidatePaths.find((path) => tileDocument.getFieldForProperty?.(path));
+  if (!tintPath) {
+    console.warn(`${MODULE_ID} | Native Tile tint field was not found; leaving icon untinted.`);
+    return;
+  }
+
+  const update = {};
+  foundry.utils.setProperty(update, tintPath, tint);
+
+  try {
+    await tileDocument.update(update);
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not apply default icon tint`, error);
+  }
+}
+
 async function createNavigationTile(data, event) {
   const sourceScene = await resolveDroppedScene(data);
   if (!sourceScene) {
@@ -104,10 +124,7 @@ async function createNavigationTile(data, event) {
     height: size,
     hidden: defaults.visibility === VISIBILITY.GM,
     texture: {
-      src: getTexture(sourceScene, defaults.displayMode, defaults.icon),
-      ...(defaults.displayMode === DISPLAY_MODES.ICON
-        ? { tint: defaults.iconTint }
-        : {})
+      src: getTexture(sourceScene, defaults.displayMode, defaults.icon)
     },
     flags: {
       [MODULE_ID]: {
@@ -119,6 +136,10 @@ async function createNavigationTile(data, event) {
   try {
     const [created] = await canvas.scene.createEmbeddedDocuments("Tile", [tileData]);
     if (created) {
+      if (defaults.displayMode === DISPLAY_MODES.ICON) {
+        await applyDefaultIconTint(created, defaults.iconTint);
+      }
+
       ui.notifications.info(
         game.i18n.format("CTN.Notifications.Created", { scene: sourceScene.name })
       );

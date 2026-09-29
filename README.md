@@ -8,7 +8,7 @@ The goal is intentionally narrow:
 
 ## v0.1.3
 
-This patch incorporates the first live Foundry test.
+This patch is rebased directly on the validated v0.1.2 build and changes only the full-Tile interaction area and the default icon tint.
 
 ### Scene drop
 
@@ -47,26 +47,12 @@ Configured gestures:
 
 Switch back to a gameplay layer (for example Tokens) to test navigation clicks.
 
-### Full Tile hitbox
+### v0.1.3 focused fixes
 
-CTN now follows the Foundry V14 Tile geometry model for interaction:
-
-- `x` / `y` are the Tile origin;
-- `anchorX` / `anchorY` define where that origin sits inside the Tile;
-- the default `0.5 / 0.5` anchor means the origin is the visual center;
-- rotation is evaluated around that origin.
-
-The actionable CTN area therefore matches the full visible Tile rectangle instead of only one quarter of a center-anchored Tile.
-
-### Default Icon Tint
-
-Game Settings now includes **Default Icon Tint**.
-
-- It uses Foundry V14's native `ColorField`.
-- It is copied only when a new Navigation Tile is created with **Navigation Icon** display.
-- Scene thumbnails are not automatically tinted.
-- After creation, tint and opacity remain ordinary native Tile Appearance properties and can be edited individually.
-- Changing the global tint later does not recolor existing Tiles.
+- CTN uses Foundry V14's native `TileDocument.shape.testPoint()` for the clickable area, so the full Tile rectangle is actionable rather than only one corner.
+- A new **Default Icon Tint** world setting is copied to newly created Navigation Icon Tiles.
+- Existing Visibility, Trigger Permission, Navigation Target, gesture, display, and icon defaults from v0.1.2 are preserved.
+- Tint application is non-blocking: a tint failure cannot prevent Tile creation or registration of the remaining CTN settings.
 
 ### Tile Configuration
 

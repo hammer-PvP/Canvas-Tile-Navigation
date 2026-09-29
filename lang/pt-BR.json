@@ -5,6 +5,8 @@
   "CTN.Settings.DefaultDisplayMode.Hint": "Usar a miniatura da Scene de destino ou um ícone de navegação.",
   "CTN.Settings.DefaultIcon.Name": "Ícone padrão de navegação",
   "CTN.Settings.DefaultIcon.Hint": "Ícone copiado para novos Tiles de navegação baseados em ícone.",
+  "CTN.Settings.DefaultIconTint.Name": "Tint padrão dos ícones",
+  "CTN.Settings.DefaultIconTint.Hint": "Cor aplicada a novos Tiles criados como Ícone de Navegação. Tiles existentes mantêm sua própria tint nativa em Aparência.",
   "CTN.Settings.DefaultVisibility.Name": "Visibilidade padrão",
   "CTN.Settings.DefaultVisibility.Hint": "Define se novos Tiles de navegação são exclusivos do GM ou visíveis para todos.",
   "CTN.Settings.DefaultTriggerPermission.Name": "Permissão padrão para acionar",
@@ -43,7 +45,5 @@
   "CTN.Notifications.CreateFailed": "O Canvas Tile Navigation não conseguiu criar o Tile.",
   "CTN.Notifications.SceneResolveFailed": "O Canvas Tile Navigation não conseguiu resolver a Scene arrastada.",
   "CTN.Notifications.MissingScene": "Este Tile de navegação aponta para uma Scene que não existe mais.",
-  "CTN.Notifications.GMRequired": "É necessário um GM conectado para esta ação de navegação.",
-  "CTN.Settings.DefaultIconTint.Name": "Tint padrão dos ícones",
-  "CTN.Settings.DefaultIconTint.Hint": "Cor aplicada a novos Tiles de navegação quando a exibição padrão for Ícone de Navegação. Tiles já existentes mantêm suas próprias configurações nativas de Aparência do Foundry."
+  "CTN.Notifications.GMRequired": "É necessário um GM conectado para esta ação de navegação."
 }
