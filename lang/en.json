@@ -95,5 +95,18 @@
   "CTN.RouteManager.SelectArrival": "Select one-way arrival…",
   "CTN.RouteManager.LinkReturn": "Link",
   "CTN.RouteManager.MarkOneWay": "One-Way",
-  "CTN.RouteManager.Clear": "Clear"
+  "CTN.RouteManager.Clear": "Clear",
+  "CTN.Controls.CheckRoutes": "Check Routes",
+  "CTN.TileConfig.IncomingRoute": "Incoming Route",
+  "CTN.TileConfig.NoIncomingRoute": "No incoming route selected",
+  "CTN.RouteManager.Change": "Change",
+  "CTN.Hover.Gesture.Click": "Click",
+  "CTN.Hover.Gesture.DoubleClick": "Double-click",
+  "CTN.Hover.Gesture.MiddleClick": "Middle-click",
+  "CTN.Hover.Gesture.AltClick": "Alt + click",
+  "CTN.Hover.Gesture.CtrlClick": "Ctrl + click",
+  "CTN.Hover.GMCommit": "{gesture} to move all players to {target}.",
+  "CTN.Hover.GMPreview": "Shift + {gesture} to preview {target}.",
+  "CTN.Hover.PlayerTravel": "{gesture} to travel to {target}.",
+  "CTN.Hover.PlayerTooFar": "Move your character Token closer to use this route."
 }

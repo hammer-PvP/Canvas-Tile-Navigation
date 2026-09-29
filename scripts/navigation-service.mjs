@@ -1,7 +1,6 @@
 import {
   MODULE_ID,
   SOCKET_NAME,
-  NAVIGATION_MODE,
   TRIGGER_PERMISSION
 } from "./constants.mjs";
 import {
@@ -11,6 +10,7 @@ import {
   resolveTile
 } from "./route-service.mjs";
 import {
+  activeNonGMPlayers,
   activeNonGMPlayersInScene,
   isUserWithinNavigationRange,
   placeUserAtArrival,
@@ -45,15 +45,13 @@ async function performNavigation({ tileDocument, requesterId, preview = false })
   const sourceScene = tileDocument.parent;
   const arrivalTile = destinationArrivalTile(tileDocument);
 
-  // GM Preview is deliberately side-effect free: no Active Scene change,
-  // no player pull, and no Token movement.
+  // GM Preview: view only. No Active Scene change, no player pull, no Tokens.
   if (requester.isGM && preview) {
     await targetScene.view();
     return;
   }
 
-  // A player may only navigate themselves, never change Active Scene and never
-  // pull the rest of the table. Revalidate proximity on the authoritative GM.
+  // Players always navigate individually. Shift has no special meaning.
   if (!requester.isGM) {
     if (!isUserWithinNavigationRange(requester, tileDocument)) {
       notifyRequester(requesterId, "CTN.Notifications.PlayerTooFar");
@@ -67,18 +65,20 @@ async function performNavigation({ tileDocument, requesterId, preview = false })
     return;
   }
 
-  // Normal GM navigation commits the table transition by activating the Scene.
-  // Existing Navigation Target still controls whether all players are pulled.
-  if (nav.navigationMode === NAVIGATION_MODE.EVERYONE) {
-    const players = activeNonGMPlayersInScene(sourceScene);
-    if (arrivalTile) {
-      await placeUsersAtArrival(players, sourceScene, targetScene, arrivalTile);
-    }
-    await targetScene.activate({ pullUsers: true });
-    return;
+  // GM normal navigation is always a table commit.
+  // Only player-character Tokens present in the source Scene are transferred.
+  const playersToMoveTokens = activeNonGMPlayersInScene(sourceScene);
+  if (arrivalTile) {
+    await placeUsersAtArrival(playersToMoveTokens, sourceScene, targetScene, arrivalTile);
   }
 
+  // Activate without pulling every connected GM. Then explicitly pull active
+  // non-GM players and make sure this GM is viewing the committed Scene.
   await targetScene.activate({ pullUsers: false });
+  await targetScene.view();
+
+  const playersToPull = activeNonGMPlayers();
+  if (playersToPull.length) targetScene.pullUsers(playersToPull);
 }
 
 async function handleSocketMessage(message) {
@@ -132,8 +132,8 @@ export async function requestNavigation(tileDocument, { preview = false } = {}) 
     return;
   }
 
-  // No GM connected: permit only local viewing. Token placement and Active
-  // Scene changes remain authoritative and therefore unavailable.
+  // Without a connected GM, player viewing may still work locally, but Token
+  // transfer remains authoritative and is therefore not attempted.
   const targetScene = resolveScene(nav.targetSceneUuid);
   if (!targetScene) {
     ui.notifications.warn(game.i18n.localize("CTN.Notifications.MissingScene"));

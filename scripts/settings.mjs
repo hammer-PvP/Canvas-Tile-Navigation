@@ -5,7 +5,6 @@ import {
   ICONS,
   VISIBILITY,
   TRIGGER_PERMISSION,
-  NAVIGATION_MODE,
   LABEL_DISPLAY
 } from "./constants.mjs";
 import { RouteManagerApplication } from "./route-manager.mjs";
@@ -105,19 +104,6 @@ export function registerSettings() {
     default: TRIGGER_PERMISSION.GM
   });
 
-  game.settings.register(MODULE_ID, "defaultNavigationMode", {
-    name: "CTN.Settings.DefaultNavigationMode.Name",
-    hint: "CTN.Settings.DefaultNavigationMode.Hint",
-    scope: "world",
-    config: true,
-    restricted: true,
-    type: String,
-    choices: {
-      [NAVIGATION_MODE.EVERYONE]: choice("BringEveryone"),
-      [NAVIGATION_MODE.SELF]: choice("TriggeringUser")
-    },
-    default: NAVIGATION_MODE.EVERYONE
-  });
 
   game.settings.register(MODULE_ID, "defaultLabelDisplay", {
     name: "CTN.Settings.DefaultLabelDisplay.Name",
@@ -152,7 +138,6 @@ export function getCreationDefaults() {
     iconTint: game.settings.get(MODULE_ID, "defaultIconTint"),
     visibility: game.settings.get(MODULE_ID, "defaultVisibility"),
     triggerPermission: game.settings.get(MODULE_ID, "defaultTriggerPermission"),
-    navigationMode: game.settings.get(MODULE_ID, "defaultNavigationMode"),
     labelDisplay: game.settings.get(MODULE_ID, "defaultLabelDisplay")
   };
 }

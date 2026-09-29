@@ -7,21 +7,24 @@ import {
   MISSING_SCENE_ICON,
   VISIBILITY,
   TRIGGER_PERMISSION,
-  NAVIGATION_MODE,
   LABEL_DISPLAY,
   POINT_TYPES,
   ROUTE_MODES,
   ROUTE_STATUS
 } from "./constants.mjs";
 import {
+  clearArrivalAssignment,
   getArrivalPointsForScene,
   getDisplayLabel,
+  getIncomingLinkForArrival,
+  getIncomingRouteCandidates,
   getReverseCandidates,
   getRouteStatus,
   isArrivalPoint,
   navData,
   resolveScene,
   resolveTile,
+  setOneWay,
   statusLabel
 } from "./route-service.mjs";
 
@@ -53,12 +56,29 @@ function statusHTML(tile) {
 }
 
 function arrivalConfigHTML(tile, nav) {
+  const incoming = getIncomingLinkForArrival(tile);
+  const candidates = getIncomingRouteCandidates(tile);
+  const incomingOptions = [
+    `<option value="">${escapeHTML(localized("CTN.TileConfig.NoIncomingRoute"))}</option>`,
+    ...candidates.map((link) => option(
+      link.uuid,
+      `${link.parent?.name ?? ""} → ${getDisplayLabel(link)}`,
+      incoming?.uuid ?? ""
+    ))
+  ].join("");
+
   return `
-    <fieldset class="ctn-config">
+    <fieldset class="ctn-config" data-ctn-arrival-config>
       <legend><i class="fa-solid fa-location-dot"></i> ${escapeHTML(localized("CTN.TileConfig.ArrivalTitle"))}</legend>
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.TileConfig.PointType"))}</label>
         <div class="form-fields"><span>${escapeHTML(localized("CTN.TileConfig.OneWayArrivalPoint"))}</span></div>
+      </div>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.IncomingRoute"))}</label>
+        <div class="form-fields">
+          <select data-ctn-incoming-route>${incomingOptions}</select>
+        </div>
       </div>
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.TileConfig.RouteStatus"))}</label>
@@ -109,10 +129,6 @@ function linkConfigHTML(tile, nav) {
     [TRIGGER_PERMISSION.EVERYONE, localized("CTN.Settings.Choices.Everyone")]
   ].map(([v, l]) => option(v, l, nav.triggerPermission)).join("");
 
-  const navigationOptions = [
-    [NAVIGATION_MODE.EVERYONE, localized("CTN.Settings.Choices.BringEveryone")],
-    [NAVIGATION_MODE.SELF, localized("CTN.Settings.Choices.TriggeringUser")]
-  ].map(([v, l]) => option(v, l, nav.navigationMode)).join("");
 
   const labelOptions = [
     [LABEL_DISPLAY.OFF, localized("CTN.Settings.Choices.LabelOff")],
@@ -240,12 +256,6 @@ function linkConfigHTML(tile, nav) {
         </div>
       </div>
 
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.TileConfig.NavigationMode"))}</label>
-        <div class="form-fields">
-          <select name="flags.${MODULE_ID}.navigation.navigationMode">${navigationOptions}</select>
-        </div>
-      </div>
 
       <p class="hint">${escapeHTML(localized("CTN.TileConfig.PlayerRangeHint"))}</p>
       <p class="hint">${escapeHTML(localized("CTN.TileConfig.PreviewHint"))}</p>
@@ -290,6 +300,21 @@ function wireRouteModeVisibility(container) {
   refresh();
 }
 
+function wireIncomingRoute(container, arrivalTile) {
+  const select = container.querySelector("[data-ctn-incoming-route]");
+  if (!select) return;
+
+  select.addEventListener("change", async () => {
+    const link = resolveTile(select.value);
+    if (!link) {
+      await clearArrivalAssignment(arrivalTile);
+      return;
+    }
+
+    await setOneWay(link, arrivalTile);
+  });
+}
+
 export function registerTileConfigHooks() {
   Hooks.on("renderApplicationV2", (application, element) => {
     const TileConfig = foundry.applications.sheets.TileConfig;
@@ -321,6 +346,7 @@ export function registerTileConfigHooks() {
     if (!host) return;
     host.insertAdjacentHTML("beforeend", html);
     wireRouteModeVisibility(host);
+    if (isArrivalPoint(tile)) wireIncomingRoute(host, tile);
   });
 
   Hooks.on("preUpdateTile", (tile, changes) => {

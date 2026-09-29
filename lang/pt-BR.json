@@ -95,5 +95,18 @@
   "CTN.RouteManager.SelectArrival": "Selecione a chegada sem retorno…",
   "CTN.RouteManager.LinkReturn": "Vincular",
   "CTN.RouteManager.MarkOneWay": "Sem retorno",
-  "CTN.RouteManager.Clear": "Limpar"
+  "CTN.RouteManager.Clear": "Limpar",
+  "CTN.Controls.CheckRoutes": "Verificar rotas",
+  "CTN.TileConfig.IncomingRoute": "Rota de origem",
+  "CTN.TileConfig.NoIncomingRoute": "Nenhuma rota de origem selecionada",
+  "CTN.RouteManager.Change": "Alterar",
+  "CTN.Hover.Gesture.Click": "Clique",
+  "CTN.Hover.Gesture.DoubleClick": "Dois cliques",
+  "CTN.Hover.Gesture.MiddleClick": "Clique do meio",
+  "CTN.Hover.Gesture.AltClick": "Alt + clique",
+  "CTN.Hover.Gesture.CtrlClick": "Ctrl + clique",
+  "CTN.Hover.GMCommit": "{gesture} para levar todos os players para {target}.",
+  "CTN.Hover.GMPreview": "Shift + {gesture} para visualizar {target}.",
+  "CTN.Hover.PlayerTravel": "{gesture} para viajar para {target}.",
+  "CTN.Hover.PlayerTooFar": "Aproxime o Token do seu personagem para usar esta rota."
 }

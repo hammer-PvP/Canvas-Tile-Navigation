@@ -85,7 +85,20 @@ export function getDisplayLabel(tile) {
   if (custom) return custom;
 
   if (isArrivalPoint(tile)) {
-    return game.i18n.localize("CTN.Arrival.DefaultLabel");
+    const scene = tile.parent;
+    const arrivals = scene
+      ? [...scene.tiles]
+          .filter(isArrivalPoint)
+          .sort((a, b) => {
+            const at = Number(a._stats?.createdTime) || 0;
+            const bt = Number(b._stats?.createdTime) || 0;
+            return at - bt || String(a.id).localeCompare(String(b.id));
+          })
+      : [tile];
+    const index = Math.max(1, arrivals.findIndex((candidate) => candidate.id === tile.id) + 1);
+    const sceneName = scene?.name ?? game.i18n.localize("CTN.Label.MissingScene");
+    const base = `${game.i18n.localize("CTN.Arrival.DefaultLabel")} — ${sceneName}`;
+    return index > 1 ? `${base} — ${index}` : base;
   }
 
   const target = resolveScene(nav.targetSceneUuid);
@@ -114,6 +127,36 @@ export function getArrivalPointsForScene(sceneOrUuid) {
   const scene = typeof sceneOrUuid === "string" ? resolveScene(sceneOrUuid) : sceneOrUuid;
   if (!scene) return [];
   return [...scene.tiles].filter(isArrivalPoint);
+}
+
+export function getIncomingLinkForArrival(arrival) {
+  if (!arrival || !isArrivalPoint(arrival)) return null;
+  return allLinks().find((link) => {
+    const nav = navData(link);
+    return nav?.routeMode === ROUTE_MODES.ONE_WAY
+      && nav?.oneWayArrivalUuid === arrival.uuid;
+  }) ?? null;
+}
+
+export function getIncomingRouteCandidates(arrival) {
+  if (!arrival || !isArrivalPoint(arrival) || !arrival.parent) return [];
+  const current = getIncomingLinkForArrival(arrival);
+
+  return allLinks()
+    .filter((link) => {
+      const nav = navData(link);
+      if (nav?.targetSceneUuid !== arrival.parent.uuid) return false;
+      if (current?.uuid === link.uuid) return true;
+
+      const status = getRouteStatus(link);
+      if ([ROUTE_STATUS.LINKED, ROUTE_STATUS.ONE_WAY].includes(status)) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const sa = a.parent?.name ?? "";
+      const sb = b.parent?.name ?? "";
+      return sa.localeCompare(sb) || getDisplayLabel(a).localeCompare(getDisplayLabel(b));
+    });
 }
 
 function compatiblePair(link, pair) {
@@ -281,6 +324,13 @@ export async function setOneWay(link, arrival) {
     return false;
   }
 
+  // One Arrival Point belongs to one incoming route. Reassigning it releases
+  // the previous route instead of storing two competing authorities.
+  const occupying = getIncomingLinkForArrival(arrival);
+  if (occupying && occupying.uuid !== link.uuid) {
+    await clearRouteResolution(occupying);
+  }
+
   const oldPair = resolveTile(navData(link)?.pairedReturnLinkUuid);
   if (oldPair && navData(oldPair)?.pairedReturnLinkUuid === link.uuid) {
     await updateTileFlags(oldPair, { pairedReturnLinkUuid: "" });
@@ -294,6 +344,13 @@ export async function setOneWay(link, arrival) {
 
   scheduleRouteReconciliation();
   return true;
+}
+
+export async function clearArrivalAssignment(arrival) {
+  if (!game.user?.isGM || !arrival || !isArrivalPoint(arrival)) return;
+  const incoming = getIncomingLinkForArrival(arrival);
+  if (!incoming) return;
+  await clearRouteResolution(incoming);
 }
 
 export async function clearRouteResolution(link) {

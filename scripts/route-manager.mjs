@@ -1,5 +1,4 @@
 import {
-  MODULE_ID,
   ROUTE_STATUS
 } from "./constants.mjs";
 import {
@@ -14,8 +13,14 @@ import {
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 
+let activeManager = null;
+
 function optionHTML(item) {
   return `<option value="${escapeHTML(item.uuid)}"${item.selected ? " selected" : ""}>${escapeHTML(item.label)}</option>`;
+}
+
+function isResolved(status) {
+  return [ROUTE_STATUS.LINKED, ROUTE_STATUS.ONE_WAY].includes(status);
 }
 
 function rowHTML(row) {
@@ -35,8 +40,10 @@ function rowHTML(row) {
     ...row.arrivals.map(optionHTML)
   ].join("");
 
+  const resolved = isResolved(row.status);
+
   return `
-    <article class="ctn-route-row" data-tile-uuid="${escapeHTML(row.uuid)}">
+    <article class="ctn-route-row ${resolved ? "is-resolved" : "needs-resolution"}" data-tile-uuid="${escapeHTML(row.uuid)}">
       <div class="ctn-route-row__main">
         <div class="ctn-route-row__title">${escapeHTML(row.label)}</div>
         <div class="ctn-route-row__path">${escapeHTML(row.source)} → ${escapeHTML(row.target)}</div>
@@ -46,9 +53,12 @@ function rowHTML(row) {
       <div class="ctn-route-row__actions">
         <button type="button" data-action="locate"><i class="fa-solid fa-crosshairs"></i> ${escapeHTML(game.i18n.localize("CTN.RouteManager.Locate"))}</button>
         <button type="button" data-action="configure"><i class="fa-solid fa-gear"></i> ${escapeHTML(game.i18n.localize("CTN.RouteManager.Configure"))}</button>
+        ${resolved
+          ? `<button type="button" data-action="edit-route"><i class="fa-solid fa-pen"></i> ${escapeHTML(game.i18n.localize("CTN.RouteManager.Change"))}</button>`
+          : ""}
       </div>
 
-      <div class="ctn-route-row__resolve">
+      <div class="ctn-route-row__resolve"${resolved ? " hidden" : ""}>
         <select data-role="pair-select">${pairOptions}</select>
         <button type="button" data-action="pair">${escapeHTML(game.i18n.localize("CTN.RouteManager.LinkReturn"))}</button>
         <select data-role="arrival-select">${arrivalOptions}</select>
@@ -87,6 +97,7 @@ export class RouteManagerApplication extends foundry.applications.api.Applicatio
 
   async _onRender(context, options) {
     await super._onRender(context, options);
+    activeManager = this;
     const element = this.element;
 
     element.querySelectorAll("[data-action]").forEach((button) => {
@@ -103,6 +114,12 @@ export class RouteManagerApplication extends foundry.applications.api.Applicatio
 
         if (action === "configure") {
           await openTileConfig(link);
+          return;
+        }
+
+        if (action === "edit-route") {
+          row.querySelector(".ctn-route-row__resolve")?.removeAttribute("hidden");
+          event.currentTarget.setAttribute("hidden", "");
           return;
         }
 
@@ -132,4 +149,20 @@ export class RouteManagerApplication extends foundry.applications.api.Applicatio
       });
     });
   }
+
+  async close(options = {}) {
+    if (activeManager === this) activeManager = null;
+    return super.close(options);
+  }
+}
+
+export function openRouteManager() {
+  if (activeManager?.rendered) {
+    void activeManager.render({ force: true });
+    return activeManager;
+  }
+
+  activeManager = new RouteManagerApplication();
+  void activeManager.render({ force: true });
+  return activeManager;
 }

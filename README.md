@@ -4,124 +4,73 @@
 
 > Preparation first, navigation instantly during play.
 
-## 1.1.0
+## 1.1.1
 
-Version 1.1 adds route topology and physical player navigation while preserving the 1.0 workflow.
+This patch refines the 1.1 route workflow and finalizes GM/player navigation semantics.
 
-### Navigation Links
+### GM and player navigation
 
-Drag a Scene from the Scene Directory onto the Canvas to create a Navigation Link.
+- **GM normal gesture:** commits the transition, activates the destination Scene, and pulls all active non-GM players.
+- **GM + Shift + gesture:** preview only. Only the GM changes view; Active Scene, players, and Tokens are untouched.
+- **Player gesture:** moves only that player and never activates the destination Scene.
+- Player Shift does not create a preview mode.
 
-- Normal Scene drop: CTN owns the drop.
-- Start dragging normally, then hold **Shift before releasing**: CTN ignores the drop so Foundry or another module such as MATT can handle it.
-- A normal GM navigation action **activates** the destination Scene.
-- `Shift + navigation gesture` is GM Preview: only the GM views the destination. Active Scene, players, and Tokens are not changed.
-- A player action never activates the Scene and never moves the whole table. It moves only that player.
+Only Tokens belonging to assigned player characters are moved automatically.
 
-### Physical player interaction
+### Player proximity
 
-Players can trigger a visible/player-enabled Navigation Link only when their assigned `User.character` Token is:
+A player may trigger a player-enabled Navigation Link only while their assigned character Token is on or directly adjacent to that Tile.
 
-- on the Navigation Tile; or
-- directly adjacent to it.
+### Arrival distribution
 
-For gridless Scenes, CTN uses one configured grid-size worth of distance as the interaction radius.
+When multiple player characters arrive together, CTN uses the paired return Link or One-Way Arrival Point as the center and searches nearby positions to avoid stacking Tokens where possible.
 
-GM interaction is never range-limited.
-
-### Route pairing
-
-A paired route is two Navigation Links that point back to each other's Scenes.
-
-Example:
-
-```text
-Scene A: A → B
-Scene B: B → A
-```
-
-When the relationship is unambiguous, CTN pairs the two automatically.
-
-The return Navigation Link is also the arrival location for Tokens. This means the ordinary A ↔ B loop needs no extra arrival marker.
-
-When there are multiple routes between the same Scenes, each additional route receives a stable automatic discriminator:
-
-```text
-Mina dos Passos Argênteos
-Mina dos Passos Argênteos — 2
-Mina dos Passos Argênteos — 3
-```
-
-A custom label may replace the displayed name without changing the internal route identity.
+- square grids expand through neighboring cells/rings;
+- hex/gridless Scenes use radial neighboring positions;
+- existing destination Tokens are treated as occupied;
+- if no free nearby position can be found, arrival falls back to the center rather than blocking navigation.
 
 ### One-Way Arrival Points
 
-Some routes deliberately have no return: a pit, a trap, a portal that closes, a one-way teleport, and similar transitions.
+One-Way Arrival labels are generated dynamically:
 
-Use the Tiles Scene Controls tool **Create One-Way Arrival Point**, then click the destination map.
+```text
+One-Way Arrival — Cave E: Ogre Lair
+One-Way Arrival — Cave E: Ogre Lair — 2
+```
 
-A One-Way Arrival Point:
+A Custom Label still overrides the automatic display name.
 
-- is GM-only;
-- is not clickable by players;
-- is used only as a Token insertion location;
-- can be selected by a Navigation Link configured as **One-Way Route**.
+The Arrival configuration now includes **Incoming Route**. It lists unresolved routes whose destination is the current Scene. Selecting one makes that source route One-Way and binds it to this Arrival Point.
 
-### Token arrival
-
-When a player navigates individually, only that player's assigned character Token is placed at the paired return Link or One-Way Arrival Point.
-
-When the GM commits a **Bring Everyone** transition, CTN processes active non-GM users whose assigned character Tokens are present in the source Scene and places those Tokens at the destination arrival location before activating/pulling the Scene.
-
-If the Actor already has a Token in the destination Scene, CTN repositions it. Otherwise CTN creates one from the source Token data.
-
-### Destination labels
-
-Default label behavior is configured globally:
-
-- Off
-- On Hover
-- Always
-
-`On Hover` is the default.
-
-Displayed text is dynamic:
-
-1. Custom Label, if present.
-2. Destination Scene name otherwise.
-3. Automatic route discriminator for additional routes.
-
-CTN does not store the Scene name as route authority.
-
-### Route diagnostics
-
-CTN continuously validates the route network.
-
-Statuses include:
-
-- Linked
-- One-Way
-- Unlinked
-- Ambiguous
-- Broken
-
-For the GM, unresolved route diagnostics override the normal label preference and remain visible on the Canvas until resolved.
-
-New unresolved/broken routes also raise a yellow permanent Foundry notification which the GM dismisses manually.
+The route remains the single authority for the relationship; the Arrival Point does not store a duplicate source-route flag.
 
 ### Route Manager
 
-**Game Settings → Canvas Tile Navigation → Route Manager**
+The Route Manager now:
 
-The Route Manager provides a World-wide view of routes and lets the GM:
+- scrolls internally;
+- keeps resolved Linked / One-Way routes compact;
+- exposes route-resolution controls only when needed or when the GM clicks Change;
+- remains available through Game Settings;
+- is also available directly from **Tiles → Check Routes**.
 
-- locate a route;
-- open its Tile configuration;
-- explicitly pair a return link;
-- select a One-Way Arrival Point;
-- clear a route resolution.
+### Hover help
 
-### Release assets
+Hovering a healthy Navigation Link shows contextual instructions.
+
+For a GM:
+
+```text
+Double-click to move all players to Cave E: Ogre Lair.
+Shift + Double-click to preview Cave E: Ogre Lair.
+```
+
+For a player, the hover explains travel or tells them to move their character Token closer.
+
+Route diagnostics still take visual priority for the GM.
+
+## Release assets
 
 GitHub releases should include:
 

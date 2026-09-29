@@ -120,7 +120,7 @@ async function createNavigationTile(data, event) {
     gesture: defaults.gesture,
     visibility: defaults.visibility,
     triggerPermission: defaults.triggerPermission,
-    navigationMode: defaults.navigationMode,
+    navigationMode: "everyone",
     label: "",
     labelDisplay: defaults.labelDisplay
   };

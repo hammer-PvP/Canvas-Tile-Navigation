@@ -12,6 +12,7 @@ import {
   ICONS
 } from "./constants.mjs";
 import { scheduleRouteReconciliation } from "./route-service.mjs";
+import { openRouteManager } from "./route-manager.mjs";
 
 let armed = false;
 let canvasElement = null;
@@ -118,14 +119,26 @@ export function registerArrivalControls() {
   Hooks.on("getSceneControlButtons", (controls) => {
     if (!game.user?.isGM || !controls.tiles?.tools) return;
 
+    const baseOrder = Object.keys(controls.tiles.tools).length;
+
     controls.tiles.tools.ctnArrivalPoint = {
       name: "ctnArrivalPoint",
       title: "CTN.Controls.CreateArrival",
       icon: "fa-solid fa-location-dot",
-      order: Object.keys(controls.tiles.tools).length,
+      order: baseOrder,
       button: true,
       visible: true,
       onChange: () => armArrivalPlacement()
+    };
+
+    controls.tiles.tools.ctnCheckRoutes = {
+      name: "ctnCheckRoutes",
+      title: "CTN.Controls.CheckRoutes",
+      icon: "fa-solid fa-list-check",
+      order: baseOrder + 1,
+      button: true,
+      visible: true,
+      onChange: () => openRouteManager()
     };
   });
 

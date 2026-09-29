@@ -1,19 +1,23 @@
 import {
   MODULE_ID,
+  GESTURES,
   HOVER_HOOK,
   LABEL_DISPLAY,
-  POINT_TYPES,
   ROUTE_STATUS,
   ROUTES_CHANGED_HOOK,
+  TRIGGER_PERMISSION,
   VISIBILITY
 } from "./constants.mjs";
 import {
   getDisplayLabel,
   getRouteStatus,
   isArrivalPoint,
+  isNavigationLink,
   navData,
+  resolveScene,
   statusLabel
 } from "./route-service.mjs";
+import { isUserWithinNavigationRange } from "./token-service.mjs";
 
 let root = null;
 let hoveredTileUuid = null;
@@ -79,6 +83,53 @@ function clientPosition(tile) {
   return canvas.clientCoordinatesFromCanvas(canvasPoint);
 }
 
+function gestureText(gesture) {
+  const key = {
+    [GESTURES.SINGLE]: "Click",
+    [GESTURES.DOUBLE]: "DoubleClick",
+    [GESTURES.MIDDLE]: "MiddleClick",
+    [GESTURES.ALT]: "AltClick",
+    [GESTURES.CTRL]: "CtrlClick"
+  }[gesture] ?? "DoubleClick";
+  return game.i18n.localize(`CTN.Hover.Gesture.${key}`);
+}
+
+function addInteractionHelp(label, tile, nav, status) {
+  if (hoveredTileUuid !== tile.uuid || !isNavigationLink(tile) || hasDiagnostic(status)) return;
+
+  const target = resolveScene(nav?.targetSceneUuid);
+  const targetName = target?.name ?? game.i18n.localize("CTN.Label.MissingScene");
+  const gesture = gestureText(nav?.gesture);
+
+  const help = document.createElement("div");
+  help.className = "ctn-canvas-label__help";
+
+  if (game.user?.isGM) {
+    const commit = document.createElement("div");
+    commit.textContent = game.i18n.format("CTN.Hover.GMCommit", { gesture, target: targetName });
+    help.append(commit);
+
+    const preview = document.createElement("div");
+    preview.textContent = game.i18n.format("CTN.Hover.GMPreview", { gesture, target: targetName });
+    help.append(preview);
+  } else {
+    if (nav?.triggerPermission !== TRIGGER_PERMISSION.EVERYONE) return;
+
+    if (isUserWithinNavigationRange(game.user, tile)) {
+      const travel = document.createElement("div");
+      travel.textContent = game.i18n.format("CTN.Hover.PlayerTravel", { gesture, target: targetName });
+      help.append(travel);
+    } else {
+      const range = document.createElement("div");
+      range.className = "ctn-canvas-label__range";
+      range.textContent = game.i18n.localize("CTN.Hover.PlayerTooFar");
+      help.append(range);
+    }
+  }
+
+  label.append(help);
+}
+
 function renderNow() {
   renderFrame = null;
   const layer = ensureRoot();
@@ -118,6 +169,7 @@ function renderNow() {
       label.append(diagnostic);
     }
 
+    addInteractionHelp(label, tile, nav, status);
     layer.append(label);
   }
 }
