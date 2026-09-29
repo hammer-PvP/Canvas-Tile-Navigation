@@ -104,7 +104,10 @@ async function createNavigationTile(data, event) {
     height: size,
     hidden: defaults.visibility === VISIBILITY.GM,
     texture: {
-      src: getTexture(sourceScene, defaults.displayMode, defaults.icon)
+      src: getTexture(sourceScene, defaults.displayMode, defaults.icon),
+      ...(defaults.displayMode === DISPLAY_MODES.ICON
+        ? { tint: defaults.iconTint }
+        : {})
     },
     flags: {
       [MODULE_ID]: {

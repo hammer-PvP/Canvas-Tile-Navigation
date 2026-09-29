@@ -43,5 +43,7 @@
   "CTN.Notifications.CreateFailed": "O Canvas Tile Navigation não conseguiu criar o Tile.",
   "CTN.Notifications.SceneResolveFailed": "O Canvas Tile Navigation não conseguiu resolver a Scene arrastada.",
   "CTN.Notifications.MissingScene": "Este Tile de navegação aponta para uma Scene que não existe mais.",
-  "CTN.Notifications.GMRequired": "É necessário um GM conectado para esta ação de navegação."
+  "CTN.Notifications.GMRequired": "É necessário um GM conectado para esta ação de navegação.",
+  "CTN.Settings.DefaultIconTint.Name": "Tint padrão dos ícones",
+  "CTN.Settings.DefaultIconTint.Hint": "Cor aplicada a novos Tiles de navegação quando a exibição padrão for Ícone de Navegação. Tiles já existentes mantêm suas próprias configurações nativas de Aparência do Foundry."
 }

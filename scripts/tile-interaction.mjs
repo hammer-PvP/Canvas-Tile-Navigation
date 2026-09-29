@@ -55,33 +55,42 @@ function canvasPoint(clientX, clientY) {
 }
 
 function containsPoint(tileDocument, point) {
-  const x = Number(tileDocument.x) || 0;
-  const y = Number(tileDocument.y) || 0;
-  const width = Number(tileDocument.width) || 0;
-  const height = Number(tileDocument.height) || 0;
+  const originX = Number(tileDocument.x) || 0;
+  const originY = Number(tileDocument.y) || 0;
+  const width = Math.abs(Number(tileDocument.width) || 0);
+  const height = Math.abs(Number(tileDocument.height) || 0);
   if (!width || !height) return false;
 
-  // TileDocument x/y describe the document rectangle. Rotation is around its center.
-  const centerX = x + (width / 2);
-  const centerY = y + (height / 2);
+  // Foundry V14 positions Tile meshes at TileDocument (x, y). The Tile's
+  // top-level anchorX/anchorY determine where that origin lies inside the
+  // rectangle. The default 0.5/0.5 therefore means (x, y) is its center.
+  const anchorX = Number.isFinite(Number(tileDocument.anchorX))
+    ? Number(tileDocument.anchorX)
+    : 0.5;
+  const anchorY = Number.isFinite(Number(tileDocument.anchorY))
+    ? Number(tileDocument.anchorY)
+    : 0.5;
+
+  const left = -(width * anchorX);
+  const top = -(height * anchorY);
+  const right = left + width;
+  const bottom = top + height;
+
+  // Transform the Canvas point into the Tile's local, unrotated coordinate
+  // system around the document origin.
   const angle = -(Number(tileDocument.rotation) || 0) * (Math.PI / 180);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const dx = point.x - centerX;
-  const dy = point.y - centerY;
+  const dx = point.x - originX;
+  const dy = point.y - originY;
 
-  const localX = centerX + (dx * cos) - (dy * sin);
-  const localY = centerY + (dx * sin) + (dy * cos);
+  const localX = (dx * cos) - (dy * sin);
+  const localY = (dx * sin) + (dy * cos);
 
-  const minX = Math.min(x, x + width);
-  const maxX = Math.max(x, x + width);
-  const minY = Math.min(y, y + height);
-  const maxY = Math.max(y, y + height);
-
-  return localX >= minX
-    && localX <= maxX
-    && localY >= minY
-    && localY <= maxY;
+  return localX >= Math.min(left, right)
+    && localX <= Math.max(left, right)
+    && localY >= Math.min(top, bottom)
+    && localY <= Math.max(top, bottom);
 }
 
 function isAbove(candidate, current) {

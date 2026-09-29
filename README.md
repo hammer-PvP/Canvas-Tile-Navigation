@@ -6,7 +6,7 @@ The goal is intentionally narrow:
 
 > Prepare Scene links visually, then navigate instantly during play.
 
-## v0.1.2
+## v0.1.3
 
 This patch incorporates the first live Foundry test.
 
@@ -46,6 +46,27 @@ Configured gestures:
 **Editing rule:** while the GM has the native Tiles Layer active, Foundry's normal Tile editing behavior wins. CTN does not navigate from clicks in that mode, so Tiles can still be selected, moved, resized, and double-clicked to open Tile Configuration.
 
 Switch back to a gameplay layer (for example Tokens) to test navigation clicks.
+
+### Full Tile hitbox
+
+CTN now follows the Foundry V14 Tile geometry model for interaction:
+
+- `x` / `y` are the Tile origin;
+- `anchorX` / `anchorY` define where that origin sits inside the Tile;
+- the default `0.5 / 0.5` anchor means the origin is the visual center;
+- rotation is evaluated around that origin.
+
+The actionable CTN area therefore matches the full visible Tile rectangle instead of only one quarter of a center-anchored Tile.
+
+### Default Icon Tint
+
+Game Settings now includes **Default Icon Tint**.
+
+- It uses Foundry V14's native `ColorField`.
+- It is copied only when a new Navigation Tile is created with **Navigation Icon** display.
+- Scene thumbnails are not automatically tinted.
+- After creation, tint and opacity remain ordinary native Tile Appearance properties and can be edited individually.
+- Changing the global tint later does not recolor existing Tiles.
 
 ### Tile Configuration
 

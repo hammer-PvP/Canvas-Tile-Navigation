@@ -60,6 +60,16 @@ export function registerSettings() {
     default: ICONS.ARROW
   });
 
+  game.settings.register(MODULE_ID, "defaultIconTint", {
+    name: "CTN.Settings.DefaultIconTint.Name",
+    hint: "CTN.Settings.DefaultIconTint.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: new foundry.fields.ColorField({ nullable: false }),
+    default: "#ffffff"
+  });
+
   game.settings.register(MODULE_ID, "defaultVisibility", {
     name: "CTN.Settings.DefaultVisibility.Name",
     hint: "CTN.Settings.DefaultVisibility.Hint",
@@ -108,6 +118,7 @@ export function getCreationDefaults() {
     gesture: game.settings.get(MODULE_ID, "defaultGesture"),
     displayMode: game.settings.get(MODULE_ID, "defaultDisplayMode"),
     icon: game.settings.get(MODULE_ID, "defaultIcon"),
+    iconTint: game.settings.get(MODULE_ID, "defaultIconTint"),
     visibility: game.settings.get(MODULE_ID, "defaultVisibility"),
     triggerPermission: game.settings.get(MODULE_ID, "defaultTriggerPermission"),
     navigationMode: game.settings.get(MODULE_ID, "defaultNavigationMode")
