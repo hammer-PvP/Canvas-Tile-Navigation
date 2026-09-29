@@ -101,26 +101,6 @@ export function registerSettings() {
     },
     default: NAVIGATION_MODE.EVERYONE
   });
-
-  game.settings.register(MODULE_ID, "defaultWidth", {
-    name: "CTN.Settings.DefaultWidth.Name",
-    hint: "CTN.Settings.DefaultWidth.Hint",
-    scope: "world",
-    config: true,
-    restricted: true,
-    type: Number,
-    default: 240
-  });
-
-  game.settings.register(MODULE_ID, "defaultHeight", {
-    name: "CTN.Settings.DefaultHeight.Name",
-    hint: "CTN.Settings.DefaultHeight.Hint",
-    scope: "world",
-    config: true,
-    restricted: true,
-    type: Number,
-    default: 135
-  });
 }
 
 export function getCreationDefaults() {
@@ -130,8 +110,6 @@ export function getCreationDefaults() {
     icon: game.settings.get(MODULE_ID, "defaultIcon"),
     visibility: game.settings.get(MODULE_ID, "defaultVisibility"),
     triggerPermission: game.settings.get(MODULE_ID, "defaultTriggerPermission"),
-    navigationMode: game.settings.get(MODULE_ID, "defaultNavigationMode"),
-    width: Math.max(32, Number(game.settings.get(MODULE_ID, "defaultWidth")) || 240),
-    height: Math.max(32, Number(game.settings.get(MODULE_ID, "defaultHeight")) || 135)
+    navigationMode: game.settings.get(MODULE_ID, "defaultNavigationMode")
   };
 }

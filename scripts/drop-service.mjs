@@ -34,14 +34,21 @@ function isSceneDrag(data) {
 }
 
 async function resolveDroppedScene(data) {
-  if (data.uuid) {
-    const document = await foundry.utils.fromUuid(data.uuid);
+  try {
+    const document = await Scene.implementation.fromDropData(data);
     if (document?.documentName === "Scene") return document;
+  } catch (_error) {
+    // Fall through to simple world-Scene resolution.
   }
 
-  const id = data.id ?? data._id;
-  if (id) return game.scenes.get(id) ?? null;
-  return null;
+  const uuid = data?.uuid;
+  if (typeof uuid === "string" && uuid.startsWith("Scene.")) {
+    const id = uuid.slice("Scene.".length).split(".")[0];
+    return game.scenes.get(id) ?? null;
+  }
+
+  const id = data?.id ?? data?._id;
+  return id ? game.scenes.get(id) ?? null : null;
 }
 
 function getTexture(scene, displayMode, icon) {
@@ -55,6 +62,13 @@ function getTexture(scene, displayMode, icon) {
     ?? MISSING_SCENE_ICON;
 }
 
+function getNavigationTileSize() {
+  // Foundry Scenes keep a grid pixel size even when their grid type is Gridless.
+  // CTN uses that native Scene scale and never stores a competing width/height default.
+  const size = Number(canvas?.scene?.grid?.size ?? canvas?.grid?.size);
+  return Number.isFinite(size) && size > 0 ? Math.round(size) : 100;
+}
+
 async function createNavigationTile(data, event) {
   const sourceScene = await resolveDroppedScene(data);
   if (!sourceScene) {
@@ -65,9 +79,10 @@ async function createNavigationTile(data, event) {
   if (!canvas?.ready || !canvas.scene) return;
 
   const defaults = getCreationDefaults();
+  const size = getNavigationTileSize();
   const point = canvas.canvasCoordinatesFromClient({ x: event.clientX, y: event.clientY });
-  const x = Math.round(point.x - defaults.width / 2);
-  const y = Math.round(point.y - defaults.height / 2);
+  const x = Math.round(point.x - size / 2);
+  const y = Math.round(point.y - size / 2);
 
   const navigation = {
     enabled: true,
@@ -85,8 +100,8 @@ async function createNavigationTile(data, event) {
     name: `CTN: ${sourceScene.name}`,
     x,
     y,
-    width: defaults.width,
-    height: defaults.height,
+    width: size,
+    height: size,
     hidden: defaults.visibility === VISIBILITY.GM,
     texture: {
       src: getTexture(sourceScene, defaults.displayMode, defaults.icon)
@@ -119,8 +134,7 @@ function onDropCapture(event) {
   const data = getDragData(event);
   if (!isSceneDrag(data)) return;
 
-  // CTN owns normal Scene drops. Capture at window level so core and other
-  // modules never receive this specific drop. Shift+drag bypasses CTN entirely.
+  // CTN owns normal Scene drops. Shift+drop bypasses CTN completely.
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();

@@ -15,9 +15,12 @@ function activePrimaryGM() {
     .sort((a, b) => a.id.localeCompare(b.id))[0] ?? null;
 }
 
-async function resolveScene(uuid) {
-  if (!uuid) return null;
-  return foundry.utils.fromUuid(uuid);
+function resolveWorldScene(uuid) {
+  if (!uuid || typeof uuid !== "string") return null;
+  const id = uuid.startsWith("Scene.")
+    ? uuid.slice("Scene.".length).split(".")[0]
+    : uuid;
+  return game.scenes.get(id) ?? null;
 }
 
 async function performNavigation({ tileDocument, requesterId }) {
@@ -29,8 +32,8 @@ async function performNavigation({ tileDocument, requesterId }) {
 
   if (!requester.isGM && nav.triggerPermission !== TRIGGER_PERMISSION.EVERYONE) return;
 
-  const targetScene = await resolveScene(nav.targetSceneUuid);
-  if (!targetScene || targetScene.documentName !== "Scene") {
+  const targetScene = resolveWorldScene(nav.targetSceneUuid);
+  if (!targetScene) {
     if (requesterId === game.user.id) {
       ui.notifications.warn(game.i18n.localize("CTN.Notifications.MissingScene"));
     }
@@ -38,7 +41,11 @@ async function performNavigation({ tileDocument, requesterId }) {
   }
 
   if (nav.navigationMode === NAVIGATION_MODE.SELF) {
-    targetScene.pullUsers([requesterId]);
+    if (requesterId === game.user.id) {
+      await targetScene.view();
+    } else {
+      targetScene.pullUsers([requesterId]);
+    }
     return;
   }
 
@@ -52,8 +59,14 @@ async function handleSocketMessage(message) {
   const primaryGM = activePrimaryGM();
   if (!primaryGM || primaryGM.id !== game.user.id) return;
 
-  const tileDocument = await foundry.utils.fromUuid(message.tileUuid);
-  if (!tileDocument || tileDocument.documentName !== "Tile") return;
+  const tileUuid = String(message.tileUuid ?? "");
+  const match = /^Scene\.([^.]+)\.Tile\.([^.]+)$/.exec(tileUuid);
+  if (!match) return;
+
+  const [, sceneId, tileId] = match;
+  const scene = game.scenes.get(sceneId);
+  const tileDocument = scene?.tiles?.get(tileId);
+  if (!tileDocument) return;
 
   await performNavigation({
     tileDocument,
@@ -87,13 +100,13 @@ export async function requestNavigation(tileDocument) {
     return;
   }
 
-  // Fallback when no GM is connected. This may still be rejected by core Scene permissions.
   if (nav.navigationMode === NAVIGATION_MODE.SELF) {
-    const targetScene = await resolveScene(nav.targetSceneUuid);
-    if (!targetScene || targetScene.documentName !== "Scene") {
+    const targetScene = resolveWorldScene(nav.targetSceneUuid);
+    if (!targetScene) {
       ui.notifications.warn(game.i18n.localize("CTN.Notifications.MissingScene"));
       return;
     }
+
     try {
       await targetScene.view();
     } catch (error) {

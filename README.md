@@ -6,69 +6,62 @@ The goal is intentionally narrow:
 
 > Prepare Scene links visually, then navigate instantly during play.
 
-## v0.1.0
+## v0.1.1
 
-This first test build establishes the core workflow:
+This patch incorporates the first live Foundry test.
 
-- Drag a Scene from the Scene Directory onto the Canvas.
-- CTN captures the normal Scene drop and creates a persistent Foundry Tile.
-- Hold **Shift while dropping** to bypass CTN completely. The drop is then left to Foundry or any other installed module, such as Monk's Active Tile Triggers.
-- New navigation Tiles copy the current world defaults.
-- Defaults include:
-  - navigation gesture;
-  - Scene thumbnail or navigation icon;
-  - default icon;
-  - visibility;
-  - who may trigger the Tile;
-  - move everyone or only the triggering user;
-  - initial width and height.
-- Double-click a CTN Tile while using the Tiles layer to access its normal Tile Configuration. CTN adds a **Canvas Tile Navigation** section to that configuration.
-- Navigation uses Scene viewing/pulling and does **not** activate the destination Scene.
-- Player-triggered navigation is routed through a connected GM when required.
-- CTN uses its own module flags and has no required game-system dependency.
+### Scene drop
 
-## Drop ownership
+- Drag a Scene normally: CTN owns the drop and creates one navigation Tile.
+- Hold **Shift while dropping**: CTN ignores the drop completely so Foundry or another module can handle it.
+- CTN has no MATT-specific dependency.
 
-Normal Scene drag/drop is owned by CTN.
+### Native size
 
-**Shift + drag/drop** is the universal bypass:
+CTN no longer has Default Tile Width / Default Tile Height settings.
 
-```text
-Normal Scene drag  -> Canvas Tile Navigation
-Shift + Scene drag -> CTN ignores the drop
-```
+Every new Navigation Tile is created as a **square** whose side length is the current Scene's native **Grid Size (pixels)**.
 
-CTN does not contain a MATT-specific integration. This is deliberate: the bypass can be used with any module.
+That same Scene grid size exists even when the Scene is configured as Gridless, so CTN still uses the Scene's native scale instead of maintaining a second size setting.
 
-## Intended scope
+### Interaction
 
-CTN is for click-based Scene navigation.
+Navigation interaction is handled at the Canvas level rather than relying on the native Tiles Layer.
 
-It is **not** intended to become a generic trigger engine. If you need workflows such as "a token walks onto this area and triggers a Scene change", use a module designed for triggers/automation.
+This is important because Foundry players do not normally interact with the Tiles Layer.
 
-## Initial navigation icons
+Configured gestures:
 
-The module ships with simple monochrome SVG navigation symbols:
+- Single Left Click
+- Double Left Click
+- Middle Click
+- Alt + Left Click
+- Ctrl + Left Click
 
-- generic arrow;
-- enter door;
-- exit door;
-- stairs up;
-- stairs down;
-- return/back.
+**Editing rule:** while the GM has the native Tiles Layer active, Foundry's normal Tile editing behavior wins. CTN does not navigate from clicks in that mode, so Tiles can still be selected, moved, resized, and double-clicked to open Tile Configuration.
 
-## Current test notes
+Switch back to a gameplay layer (for example Tokens) to test navigation clicks.
 
-This is the first live-test build. The most important areas to validate in Foundry V14 are:
+### Tile Configuration
 
-1. Scene drop interception and Shift bypass.
-2. Coexistence with modules that also react to Scene drops.
-3. Tile Configuration injection under ApplicationV2.
-4. Player interaction with visible navigation Tiles.
-5. Single/double/middle/modifier click behavior.
-6. `Scene.pullUsers()` behavior without activating the Scene.
+Double-click a CTN Tile while editing Tiles to open the normal Tile Configuration.
 
-The visual hover label and richer navigation-point presentation are intentionally left for refinement after the core interaction is proven stable.
+The CTN section is now inserted only inside the native **Appearance** tab instead of remaining visible beneath every tab.
+
+### Navigation
+
+Per-Tile configuration still supports:
+
+- destination Scene;
+- Scene Thumbnail or Navigation Icon;
+- icon choice;
+- custom label storage;
+- navigation gesture;
+- GM-only or Everyone visibility;
+- GM-only or Everyone trigger permission;
+- Bring Everyone or Triggering User Only.
+
+Navigation changes the viewed Scene and does not activate the destination Scene.
 
 ## Repository
 

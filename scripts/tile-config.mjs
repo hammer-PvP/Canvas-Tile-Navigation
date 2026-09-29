@@ -149,8 +149,11 @@ function hasSubmittedValue(changes, path) {
 }
 
 function resolveTargetScene(uuid) {
-  const document = foundry.utils.fromUuidSync(uuid);
-  return document?.documentName === "Scene" ? document : null;
+  if (!uuid || typeof uuid !== "string") return null;
+  const id = uuid.startsWith("Scene.")
+    ? uuid.slice("Scene.".length).split(".")[0]
+    : uuid;
+  return game.scenes.get(id) ?? null;
 }
 
 function textureFor(config) {
@@ -176,9 +179,26 @@ export function registerTileConfigHooks() {
     const form = element.matches?.("form") ? element : element.querySelector("form");
     if (!form || form.querySelector(".ctn-config")) return;
 
-    const footer = form.querySelector("footer");
-    if (footer) footer.insertAdjacentHTML("beforebegin", configHTML(nav));
-    else form.insertAdjacentHTML("beforeend", configHTML(nav));
+    // Keep CTN configuration inside one native tab instead of displaying the
+    // same section beneath every Tile Config tab.
+    const appearanceCandidates = [...form.querySelectorAll('[data-tab="appearance"]')];
+    const appearancePanel = appearanceCandidates.find((candidate) => {
+      if (candidate.matches("a, button, [role='tab']")) return false;
+      return Boolean(candidate.querySelector("input, select, .form-group"));
+    });
+
+    if (appearancePanel) {
+      appearancePanel.insertAdjacentHTML("beforeend", configHTML(nav));
+      return;
+    }
+
+    // Defensive fallback for any future core template change.
+    const firstPanel = [...form.querySelectorAll(".tab, [data-tab]")].find((candidate) => {
+      if (candidate.matches("a, button, [role='tab']")) return false;
+      return Boolean(candidate.querySelector("input, select, .form-group"));
+    });
+
+    if (firstPanel) firstPanel.insertAdjacentHTML("beforeend", configHTML(nav));
   });
 
   Hooks.on("preUpdateTile", (tile, changes) => {
