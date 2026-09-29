@@ -6,7 +6,7 @@ The goal is intentionally narrow:
 
 > Prepare Scene links visually, then navigate instantly during play.
 
-## v0.1.3
+## 1.0.0-rc.1
 
 This patch is rebased directly on the validated v0.1.2 build and changes only the full-Tile interaction area and the default icon tint.
 
@@ -53,6 +53,24 @@ Switch back to a gameplay layer (for example Tokens) to test navigation clicks.
 - A new **Default Icon Tint** world setting is copied to newly created Navigation Icon Tiles.
 - Existing Visibility, Trigger Permission, Navigation Target, gesture, display, and icon defaults from v0.1.2 are preserved.
 - Tint application is non-blocking: a tint failure cannot prevent Tile creation or registration of the remaining CTN settings.
+
+
+### 1.0.0 RC1 icon polish
+
+The built-in navigation icon pack has been redrawn and is bundled locally with the module:
+
+- Generic Arrow
+- Enter Door
+- Exit Door
+- Stairs Up
+- Stairs Down
+- Return / Back
+
+The stair arrows now sit above and follow the direction of the steps, while Enter and Exit use clearly opposing door-navigation metaphors.
+
+`missing-scene.png` is an internal technical fallback asset and is not part of the normal navigation icon choices.
+
+No icon requires an external URL or network request during play.
 
 ### Tile Configuration
 

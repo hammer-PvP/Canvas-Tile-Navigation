@@ -51,12 +51,12 @@ export const ICONS = Object.freeze({
 });
 
 export const ICON_PATHS = Object.freeze({
-  [ICONS.ARROW]: `modules/${MODULE_ID}/assets/icons/arrow.svg`,
-  [ICONS.ENTER_DOOR]: `modules/${MODULE_ID}/assets/icons/enter-door.svg`,
-  [ICONS.EXIT_DOOR]: `modules/${MODULE_ID}/assets/icons/exit-door.svg`,
-  [ICONS.STAIRS_UP]: `modules/${MODULE_ID}/assets/icons/stairs-up.svg`,
-  [ICONS.STAIRS_DOWN]: `modules/${MODULE_ID}/assets/icons/stairs-down.svg`,
-  [ICONS.BACK]: `modules/${MODULE_ID}/assets/icons/back.svg`
+  [ICONS.ARROW]: `modules/${MODULE_ID}/assets/icons/arrow.png`,
+  [ICONS.ENTER_DOOR]: `modules/${MODULE_ID}/assets/icons/enter-door.png`,
+  [ICONS.EXIT_DOOR]: `modules/${MODULE_ID}/assets/icons/exit-door.png`,
+  [ICONS.STAIRS_UP]: `modules/${MODULE_ID}/assets/icons/stairs-up.png`,
+  [ICONS.STAIRS_DOWN]: `modules/${MODULE_ID}/assets/icons/stairs-down.png`,
+  [ICONS.BACK]: `modules/${MODULE_ID}/assets/icons/back.png`
 });
 
-export const MISSING_SCENE_ICON = `modules/${MODULE_ID}/assets/icons/missing-scene.svg`;
+export const MISSING_SCENE_ICON = `modules/${MODULE_ID}/assets/internal/missing-scene.png`;
