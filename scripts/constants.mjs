@@ -1,5 +1,7 @@
 export const MODULE_ID = "canvas-tile-navigation";
 export const SOCKET_NAME = `module.${MODULE_ID}`;
+export const HOVER_HOOK = `${MODULE_ID}.hover`;
+export const ROUTES_CHANGED_HOOK = `${MODULE_ID}.routesChanged`;
 
 export const FLAGS = Object.freeze({
   ROOT: "navigation",
@@ -10,7 +12,40 @@ export const FLAGS = Object.freeze({
   VISIBILITY: "visibility",
   TRIGGER_PERMISSION: "triggerPermission",
   NAVIGATION_MODE: "navigationMode",
-  LABEL: "label"
+  LABEL: "label",
+  LABEL_DISPLAY: "labelDisplay",
+  POINT_TYPE: "pointType",
+  ROUTE_ID: "routeId",
+  ROUTE_INDEX: "routeIndex",
+  ROUTE_MODE: "routeMode",
+  PAIRED_RETURN_UUID: "pairedReturnLinkUuid",
+  ONE_WAY_ARRIVAL_UUID: "oneWayArrivalUuid",
+  ARRIVAL_ID: "arrivalId"
+});
+
+export const POINT_TYPES = Object.freeze({
+  LINK: "link",
+  ARRIVAL: "arrival"
+});
+
+export const ROUTE_MODES = Object.freeze({
+  PAIRED: "paired",
+  ONE_WAY: "one-way"
+});
+
+export const ROUTE_STATUS = Object.freeze({
+  LINKED: "linked",
+  ONE_WAY: "one-way",
+  UNLINKED: "unlinked",
+  AMBIGUOUS: "ambiguous",
+  BROKEN: "broken",
+  UNUSED_ARRIVAL: "unused-arrival"
+});
+
+export const LABEL_DISPLAY = Object.freeze({
+  OFF: "off",
+  HOVER: "hover",
+  ALWAYS: "always"
 });
 
 export const DISPLAY_MODES = Object.freeze({
@@ -60,3 +95,4 @@ export const ICON_PATHS = Object.freeze({
 });
 
 export const MISSING_SCENE_ICON = `modules/${MODULE_ID}/assets/internal/missing-scene.png`;
+export const ARRIVAL_POINT_ICON = ICON_PATHS[ICONS.ENTER_DOOR];

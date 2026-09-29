@@ -5,8 +5,10 @@ import {
   ICONS,
   VISIBILITY,
   TRIGGER_PERMISSION,
-  NAVIGATION_MODE
+  NAVIGATION_MODE,
+  LABEL_DISPLAY
 } from "./constants.mjs";
+import { RouteManagerApplication } from "./route-manager.mjs";
 
 const choice = (key) => `CTN.Settings.Choices.${key}`;
 
@@ -116,6 +118,30 @@ export function registerSettings() {
     },
     default: NAVIGATION_MODE.EVERYONE
   });
+
+  game.settings.register(MODULE_ID, "defaultLabelDisplay", {
+    name: "CTN.Settings.DefaultLabelDisplay.Name",
+    hint: "CTN.Settings.DefaultLabelDisplay.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: String,
+    choices: {
+      [LABEL_DISPLAY.OFF]: choice("LabelOff"),
+      [LABEL_DISPLAY.HOVER]: choice("LabelHover"),
+      [LABEL_DISPLAY.ALWAYS]: choice("LabelAlways")
+    },
+    default: LABEL_DISPLAY.HOVER
+  });
+
+  game.settings.registerMenu(MODULE_ID, "routeManager", {
+    name: "CTN.RouteManager.MenuName",
+    label: "CTN.RouteManager.MenuLabel",
+    hint: "CTN.RouteManager.MenuHint",
+    icon: "fa-solid fa-route",
+    type: RouteManagerApplication,
+    restricted: true
+  });
 }
 
 export function getCreationDefaults() {
@@ -126,6 +152,7 @@ export function getCreationDefaults() {
     iconTint: game.settings.get(MODULE_ID, "defaultIconTint"),
     visibility: game.settings.get(MODULE_ID, "defaultVisibility"),
     triggerPermission: game.settings.get(MODULE_ID, "defaultTriggerPermission"),
-    navigationMode: game.settings.get(MODULE_ID, "defaultNavigationMode")
+    navigationMode: game.settings.get(MODULE_ID, "defaultNavigationMode"),
+    labelDisplay: game.settings.get(MODULE_ID, "defaultLabelDisplay")
   };
 }

@@ -7,14 +7,25 @@ import {
   MISSING_SCENE_ICON,
   VISIBILITY,
   TRIGGER_PERMISSION,
-  NAVIGATION_MODE
+  NAVIGATION_MODE,
+  LABEL_DISPLAY,
+  POINT_TYPES,
+  ROUTE_MODES,
+  ROUTE_STATUS
 } from "./constants.mjs";
+import {
+  getArrivalPointsForScene,
+  getDisplayLabel,
+  getReverseCandidates,
+  getRouteStatus,
+  isArrivalPoint,
+  navData,
+  resolveScene,
+  resolveTile,
+  statusLabel
+} from "./route-service.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
-
-function navData(tile) {
-  return tile?.getFlag?.(MODULE_ID, "navigation") ?? null;
-}
 
 function option(value, label, current) {
   return `<option value="${escapeHTML(value)}"${value === current ? " selected" : ""}>${escapeHTML(label)}</option>`;
@@ -31,7 +42,41 @@ function sceneOptions(currentUuid) {
     .join("");
 }
 
-function configHTML(nav) {
+function statusHTML(tile) {
+  const status = getRouteStatus(tile);
+  const css = status === ROUTE_STATUS.BROKEN
+    ? "broken"
+    : [ROUTE_STATUS.UNLINKED, ROUTE_STATUS.AMBIGUOUS, ROUTE_STATUS.UNUSED_ARRIVAL].includes(status)
+      ? "warning"
+      : "ok";
+  return `<span class="ctn-route-status ${css}">${escapeHTML(statusLabel(status))}</span>`;
+}
+
+function arrivalConfigHTML(tile, nav) {
+  return `
+    <fieldset class="ctn-config">
+      <legend><i class="fa-solid fa-location-dot"></i> ${escapeHTML(localized("CTN.TileConfig.ArrivalTitle"))}</legend>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.PointType"))}</label>
+        <div class="form-fields"><span>${escapeHTML(localized("CTN.TileConfig.OneWayArrivalPoint"))}</span></div>
+      </div>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.RouteStatus"))}</label>
+        <div class="form-fields">${statusHTML(tile)}</div>
+      </div>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.Label"))}</label>
+        <div class="form-fields">
+          <input type="text" name="flags.${MODULE_ID}.navigation.label" value="${escapeHTML(nav.label)}"
+                 placeholder="${escapeHTML(localized("CTN.TileConfig.ArrivalLabelPlaceholder"))}">
+        </div>
+      </div>
+      <p class="hint">${escapeHTML(localized("CTN.TileConfig.ArrivalHint"))}</p>
+    </fieldset>
+  `;
+}
+
+function linkConfigHTML(tile, nav) {
   const displayOptions = [
     [DISPLAY_MODES.THUMBNAIL, localized("CTN.Settings.Choices.Thumbnail")],
     [DISPLAY_MODES.ICON, localized("CTN.Settings.Choices.Icon")]
@@ -69,8 +114,40 @@ function configHTML(nav) {
     [NAVIGATION_MODE.SELF, localized("CTN.Settings.Choices.TriggeringUser")]
   ].map(([v, l]) => option(v, l, nav.navigationMode)).join("");
 
+  const labelOptions = [
+    [LABEL_DISPLAY.OFF, localized("CTN.Settings.Choices.LabelOff")],
+    [LABEL_DISPLAY.HOVER, localized("CTN.Settings.Choices.LabelHover")],
+    [LABEL_DISPLAY.ALWAYS, localized("CTN.Settings.Choices.LabelAlways")]
+  ].map(([v, l]) => option(v, l, nav.labelDisplay ?? LABEL_DISPLAY.HOVER)).join("");
+
+  const routeMode = nav.routeMode ?? ROUTE_MODES.PAIRED;
+  const routeModeOptions = [
+    [ROUTE_MODES.PAIRED, localized("CTN.TileConfig.PairedRoute")],
+    [ROUTE_MODES.ONE_WAY, localized("CTN.TileConfig.OneWayRoute")]
+  ].map(([v, l]) => option(v, l, routeMode)).join("");
+
+  const reverse = getReverseCandidates(tile, { includePaired: true });
+  const pairOptions = [
+    `<option value="">${escapeHTML(localized("CTN.TileConfig.NoReturnSelected"))}</option>`,
+    ...reverse.map((candidate) => option(
+      candidate.uuid,
+      `${candidate.parent?.name ?? ""}: ${getDisplayLabel(candidate)}`,
+      nav.pairedReturnLinkUuid
+    ))
+  ].join("");
+
+  const arrivals = getArrivalPointsForScene(resolveScene(nav.targetSceneUuid));
+  const arrivalOptions = [
+    `<option value="">${escapeHTML(localized("CTN.TileConfig.NoArrivalSelected"))}</option>`,
+    ...arrivals.map((arrival) => option(
+      arrival.uuid,
+      getDisplayLabel(arrival),
+      nav.oneWayArrivalUuid
+    ))
+  ].join("");
+
   return `
-    <fieldset class="ctn-config">
+    <fieldset class="ctn-config" data-ctn-link-config>
       <legend><i class="fa-solid fa-route"></i> ${escapeHTML(localized("CTN.TileConfig.Title"))}</legend>
 
       <div class="form-group">
@@ -79,6 +156,37 @@ function configHTML(nav) {
           <select name="flags.${MODULE_ID}.navigation.targetSceneUuid">
             ${sceneOptions(nav.targetSceneUuid)}
           </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.AutoLabel"))}</label>
+        <div class="form-fields"><span>${escapeHTML(getDisplayLabel(tile))}</span></div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.RouteStatus"))}</label>
+        <div class="form-fields">${statusHTML(tile)}</div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.RouteMode"))}</label>
+        <div class="form-fields">
+          <select data-ctn-route-mode name="flags.${MODULE_ID}.navigation.routeMode">${routeModeOptions}</select>
+        </div>
+      </div>
+
+      <div class="form-group ctn-paired-fields">
+        <label>${escapeHTML(localized("CTN.TileConfig.ReturnLink"))}</label>
+        <div class="form-fields">
+          <select name="flags.${MODULE_ID}.navigation.pairedReturnLinkUuid">${pairOptions}</select>
+        </div>
+      </div>
+
+      <div class="form-group ctn-one-way-fields">
+        <label>${escapeHTML(localized("CTN.TileConfig.OneWayArrival"))}</label>
+        <div class="form-fields">
+          <select name="flags.${MODULE_ID}.navigation.oneWayArrivalUuid">${arrivalOptions}</select>
         </div>
       </div>
 
@@ -101,6 +209,13 @@ function configHTML(nav) {
         <div class="form-fields">
           <input type="text" name="flags.${MODULE_ID}.navigation.label" value="${escapeHTML(nav.label)}"
                  placeholder="${escapeHTML(localized("CTN.TileConfig.LabelPlaceholder"))}">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.LabelDisplay"))}</label>
+        <div class="form-fields">
+          <select name="flags.${MODULE_ID}.navigation.labelDisplay">${labelOptions}</select>
         </div>
       </div>
 
@@ -132,6 +247,8 @@ function configHTML(nav) {
         </div>
       </div>
 
+      <p class="hint">${escapeHTML(localized("CTN.TileConfig.PlayerRangeHint"))}</p>
+      <p class="hint">${escapeHTML(localized("CTN.TileConfig.PreviewHint"))}</p>
       <p class="hint ctn-bypass-hint">${escapeHTML(localized("CTN.TileConfig.BypassHint"))}</p>
     </fieldset>
   `;
@@ -148,23 +265,29 @@ function hasSubmittedValue(changes, path) {
     || foundry.utils.getProperty(changes, path) !== undefined;
 }
 
-function resolveTargetScene(uuid) {
-  if (!uuid || typeof uuid !== "string") return null;
-  const id = uuid.startsWith("Scene.")
-    ? uuid.slice("Scene.".length).split(".")[0]
-    : uuid;
-  return game.scenes.get(id) ?? null;
-}
-
 function textureFor(config) {
   if (config.displayMode === DISPLAY_MODES.ICON) {
     return ICON_PATHS[config.icon] ?? ICON_PATHS.arrow;
   }
-  const target = resolveTargetScene(config.targetSceneUuid);
+  const target = resolveScene(config.targetSceneUuid);
   return target?.thumbnail
     ?? target?.thumb
     ?? target?.background?.src
     ?? MISSING_SCENE_ICON;
+}
+
+function wireRouteModeVisibility(container) {
+  const select = container.querySelector("[data-ctn-route-mode]");
+  if (!select) return;
+
+  const refresh = () => {
+    const oneWay = select.value === ROUTE_MODES.ONE_WAY;
+    container.querySelectorAll(".ctn-paired-fields").forEach((el) => el.hidden = oneWay);
+    container.querySelectorAll(".ctn-one-way-fields").forEach((el) => el.hidden = !oneWay);
+  };
+
+  select.addEventListener("change", refresh);
+  refresh();
 }
 
 export function registerTileConfigHooks() {
@@ -179,31 +302,35 @@ export function registerTileConfigHooks() {
     const form = element.matches?.("form") ? element : element.querySelector("form");
     if (!form || form.querySelector(".ctn-config")) return;
 
-    // Keep CTN configuration inside one native tab instead of displaying the
-    // same section beneath every Tile Config tab.
+    const html = isArrivalPoint(tile)
+      ? arrivalConfigHTML(tile, nav)
+      : linkConfigHTML(tile, nav);
+
     const appearanceCandidates = [...form.querySelectorAll('[data-tab="appearance"]')];
     const appearancePanel = appearanceCandidates.find((candidate) => {
       if (candidate.matches("a, button, [role='tab']")) return false;
       return Boolean(candidate.querySelector("input, select, .form-group"));
     });
 
-    if (appearancePanel) {
-      appearancePanel.insertAdjacentHTML("beforeend", configHTML(nav));
-      return;
-    }
+    const host = appearancePanel
+      ?? [...form.querySelectorAll(".tab, [data-tab]")].find((candidate) => {
+        if (candidate.matches("a, button, [role='tab']")) return false;
+        return Boolean(candidate.querySelector("input, select, .form-group"));
+      });
 
-    // Defensive fallback for any future core template change.
-    const firstPanel = [...form.querySelectorAll(".tab, [data-tab]")].find((candidate) => {
-      if (candidate.matches("a, button, [role='tab']")) return false;
-      return Boolean(candidate.querySelector("input, select, .form-group"));
-    });
-
-    if (firstPanel) firstPanel.insertAdjacentHTML("beforeend", configHTML(nav));
+    if (!host) return;
+    host.insertAdjacentHTML("beforeend", html);
+    wireRouteModeVisibility(host);
   });
 
   Hooks.on("preUpdateTile", (tile, changes) => {
     const current = navData(tile);
     if (!current?.enabled) return;
+
+    if (isArrivalPoint(tile)) {
+      changes.hidden = true;
+      return;
+    }
 
     const base = `flags.${MODULE_ID}.navigation`;
     const config = {

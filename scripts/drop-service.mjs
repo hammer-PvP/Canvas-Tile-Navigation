@@ -3,9 +3,12 @@ import {
   DISPLAY_MODES,
   VISIBILITY,
   ICON_PATHS,
-  MISSING_SCENE_ICON
+  MISSING_SCENE_ICON,
+  POINT_TYPES,
+  ROUTE_MODES
 } from "./constants.mjs";
 import { getCreationDefaults } from "./settings.mjs";
+import { getNextRouteIndex, scheduleRouteReconciliation } from "./route-service.mjs";
 
 let bound = false;
 let dropHandler = null;
@@ -63,8 +66,6 @@ function getTexture(scene, displayMode, icon) {
 }
 
 function getNavigationTileSize() {
-  // Foundry Scenes keep a grid pixel size even when their grid type is Gridless.
-  // CTN uses that native Scene scale and never stores a competing width/height default.
   const size = Number(canvas?.scene?.grid?.size ?? canvas?.grid?.size);
   return Number.isFinite(size) && size > 0 ? Math.round(size) : 100;
 }
@@ -90,8 +91,8 @@ async function applyDefaultIconTint(tileDocument, tint) {
 }
 
 async function createNavigationTile(data, event) {
-  const sourceScene = await resolveDroppedScene(data);
-  if (!sourceScene) {
+  const targetScene = await resolveDroppedScene(data);
+  if (!targetScene) {
     ui.notifications.warn(game.i18n.localize("CTN.Notifications.SceneResolveFailed"));
     return;
   }
@@ -103,28 +104,36 @@ async function createNavigationTile(data, event) {
   const point = canvas.canvasCoordinatesFromClient({ x: event.clientX, y: event.clientY });
   const x = Math.round(point.x - size / 2);
   const y = Math.round(point.y - size / 2);
+  const routeIndex = getNextRouteIndex(canvas.scene, targetScene.uuid);
 
   const navigation = {
     enabled: true,
-    targetSceneUuid: sourceScene.uuid,
+    pointType: POINT_TYPES.LINK,
+    routeId: foundry.utils.randomID(),
+    routeIndex,
+    routeMode: ROUTE_MODES.PAIRED,
+    pairedReturnLinkUuid: "",
+    oneWayArrivalUuid: "",
+    targetSceneUuid: targetScene.uuid,
     displayMode: defaults.displayMode,
     icon: defaults.icon,
     gesture: defaults.gesture,
     visibility: defaults.visibility,
     triggerPermission: defaults.triggerPermission,
     navigationMode: defaults.navigationMode,
-    label: ""
+    label: "",
+    labelDisplay: defaults.labelDisplay
   };
 
   const tileData = {
-    name: `CTN: ${sourceScene.name}`,
+    name: `CTN: ${targetScene.name}`,
     x,
     y,
     width: size,
     height: size,
     hidden: defaults.visibility === VISIBILITY.GM,
     texture: {
-      src: getTexture(sourceScene, defaults.displayMode, defaults.icon)
+      src: getTexture(targetScene, defaults.displayMode, defaults.icon)
     },
     flags: {
       [MODULE_ID]: {
@@ -141,8 +150,9 @@ async function createNavigationTile(data, event) {
       }
 
       ui.notifications.info(
-        game.i18n.format("CTN.Notifications.Created", { scene: sourceScene.name })
+        game.i18n.format("CTN.Notifications.Created", { scene: targetScene.name })
       );
+      scheduleRouteReconciliation();
     }
   } catch (error) {
     console.error(`${MODULE_ID} | Failed to create navigation Tile`, error);
@@ -158,7 +168,6 @@ function onDropCapture(event) {
   const data = getDragData(event);
   if (!isSceneDrag(data)) return;
 
-  // CTN owns normal Scene drops. Shift+drop bypasses CTN completely.
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();

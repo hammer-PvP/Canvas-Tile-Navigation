@@ -10,3 +10,133 @@
   margin: 0.5rem 0 0;
   opacity: 0.8;
 }
+
+.ctn-route-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--color-border-light-2);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.ctn-route-status.warning,
+.ctn-route-row__status.warning {
+  color: #d6a62c;
+}
+
+.ctn-route-status.broken,
+.ctn-route-row__status.broken {
+  color: #d15757;
+}
+
+.ctn-route-status.ok,
+.ctn-route-row__status.ok {
+  color: #6fa36f;
+}
+
+#ctn-canvas-labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 70;
+}
+
+.ctn-canvas-label {
+  position: fixed;
+  transform: translate(-50%, 0);
+  max-width: 260px;
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.ctn-canvas-label__title {
+  font-weight: 600;
+}
+
+.ctn-canvas-label__status {
+  margin-top: 0.15rem;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.ctn-canvas-label__status.warning {
+  color: #ffd25b;
+}
+
+.ctn-canvas-label__status.broken {
+  color: #ff7676;
+}
+
+.ctn-canvas-label__status.one-way {
+  color: #8cc8ff;
+}
+
+.ctn-canvas-label__status.ok {
+  color: #9bd39b;
+}
+
+.ctn-route-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.5rem;
+}
+
+.ctn-route-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 0.5rem 0.75rem;
+  padding: 0.65rem;
+  border: 1px solid var(--color-border-light-2);
+  border-radius: 5px;
+}
+
+.ctn-route-row__title {
+  font-weight: 700;
+}
+
+.ctn-route-row__path,
+.ctn-route-row__status {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.ctn-route-row__actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: start;
+}
+
+.ctn-route-row__resolve {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) auto auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.ctn-route-row__resolve select {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .ctn-route-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ctn-route-row__resolve {
+    grid-column: 1;
+    grid-template-columns: 1fr;
+  }
+}

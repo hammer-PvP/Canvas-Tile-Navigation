@@ -1,10 +1,13 @@
 import {
-  MODULE_ID,
   GESTURES,
-  VISIBILITY,
-  TRIGGER_PERMISSION
+  HOVER_HOOK,
+  MODULE_ID,
+  TRIGGER_PERMISSION,
+  VISIBILITY
 } from "./constants.mjs";
 import { requestNavigation } from "./navigation-service.mjs";
+import { isNavigationLink, navData } from "./route-service.mjs";
+import { isUserWithinNavigationRange } from "./token-service.mjs";
 
 let boundElement = null;
 let pointerUpHandler = null;
@@ -17,10 +20,6 @@ let hoverFrame = null;
 let pendingPointer = null;
 let hoveredTileId = null;
 
-function navData(tileDocument) {
-  return tileDocument?.getFlag?.(MODULE_ID, "navigation") ?? null;
-}
-
 function isEditingTiles() {
   return Boolean(game.user?.isGM && canvas?.activeLayer === canvas?.tiles);
 }
@@ -30,14 +29,20 @@ function canSee(tileDocument, nav) {
   return nav?.visibility === VISIBILITY.EVERYONE && !tileDocument.hidden;
 }
 
-function canTrigger(nav) {
+function hasTriggerPermission(nav) {
   return game.user?.isGM || nav?.triggerPermission === TRIGGER_PERMISSION.EVERYONE;
+}
+
+function canTrigger(tileDocument, nav) {
+  if (!hasTriggerPermission(nav)) return false;
+  if (game.user?.isGM) return true;
+  return isUserWithinNavigationRange(game.user, tileDocument);
 }
 
 function rebuildNavigationTileCache() {
   const tiles = canvas?.scene?.tiles?.contents;
   navigationTileCache = Array.isArray(tiles)
-    ? tiles.filter((tile) => navData(tile)?.enabled)
+    ? tiles.filter(isNavigationLink)
     : [];
 }
 
@@ -55,9 +60,6 @@ function canvasPoint(clientX, clientY) {
 }
 
 function containsPoint(tileDocument, point) {
-  // Foundry V14 already exposes the actual rectangle shape for a TileDocument.
-  // Using its native point test keeps CTN aligned with the full visible Tile,
-  // including anchor/origin and rotation.
   if (tileDocument?.shape?.testPoint) {
     try {
       return Boolean(tileDocument.shape.testPoint(point));
@@ -66,8 +68,6 @@ function containsPoint(tileDocument, point) {
     }
   }
 
-  // Defensive fallback. V14 commonly stores the anchor with texture data, while
-  // some API surfaces expose it directly on the Tile document.
   const originX = Number(tileDocument?.x) || 0;
   const originY = Number(tileDocument?.y) || 0;
   const width = Math.abs(Number(tileDocument?.width) || 0);
@@ -111,23 +111,19 @@ function isAbove(candidate, current) {
   return sortA > sortB;
 }
 
-function getNavigationTileAt(clientX, clientY) {
+function getVisibleNavigationTileAt(clientX, clientY) {
   if (!navigationTileCache.length) return null;
 
   const point = canvasPoint(clientX, clientY);
   if (!point) return null;
 
   let best = null;
-
   for (const tile of navigationTileCache) {
     const nav = navData(tile);
-    if (!nav?.enabled) continue;
-    if (!canSee(tile, nav)) continue;
-    if (!canTrigger(nav)) continue;
+    if (!nav?.enabled || !canSee(tile, nav)) continue;
     if (!containsPoint(tile, point)) continue;
     if (isAbove(tile, best)) best = tile;
   }
-
   return best;
 }
 
@@ -158,42 +154,60 @@ function matchesPointerGesture(nav, event) {
 
 async function activate(tileDocument, event) {
   event.preventDefault?.();
-  await requestNavigation(tileDocument);
+  await requestNavigation(tileDocument, {
+    preview: Boolean(game.user?.isGM && event.shiftKey)
+  });
+}
+
+function validateAndActivate(tileDocument, event) {
+  const nav = navData(tileDocument);
+  if (!hasTriggerPermission(nav)) return;
+
+  if (!canTrigger(tileDocument, nav)) {
+    if (!game.user?.isGM) {
+      ui.notifications.warn(game.i18n.localize("CTN.Notifications.PlayerTooFar"));
+    }
+    return;
+  }
+
+  void activate(tileDocument, event);
 }
 
 function onPointerUp(event) {
   if (isEditingTiles()) return;
 
-  const tileDocument = getNavigationTileAt(event.clientX, event.clientY);
+  const tileDocument = getVisibleNavigationTileAt(event.clientX, event.clientY);
   if (!tileDocument) return;
 
   const nav = navData(tileDocument);
   if (!matchesPointerGesture(nav, event)) return;
 
-  void activate(tileDocument, event);
+  validateAndActivate(tileDocument, event);
 }
 
 function onDoubleClick(event) {
   if (isEditingTiles()) return;
   if (event.button !== 0 || event.altKey || event.ctrlKey) return;
 
-  const tileDocument = getNavigationTileAt(event.clientX, event.clientY);
+  const tileDocument = getVisibleNavigationTileAt(event.clientX, event.clientY);
   if (!tileDocument) return;
 
   const nav = navData(tileDocument);
   if (nav?.gesture !== GESTURES.DOUBLE) return;
 
-  void activate(tileDocument, event);
+  validateAndActivate(tileDocument, event);
 }
 
-function setHoveredTile(tileDocument) {
+function setHoveredTile(tileDocument, actionable = false) {
   if (!boundElement) return;
 
   const nextId = tileDocument?.id ?? null;
-  if (nextId === hoveredTileId) return;
+  if (nextId !== hoveredTileId) {
+    hoveredTileId = nextId;
+    Hooks.callAll(HOVER_HOOK, tileDocument ?? null);
+  }
 
-  hoveredTileId = nextId;
-  boundElement.style.cursor = nextId ? "pointer" : "";
+  boundElement.style.cursor = nextId && actionable ? "pointer" : "";
 }
 
 function processPointerMove() {
@@ -205,12 +219,13 @@ function processPointerMove() {
   pendingPointer = null;
 
   if (isEditingTiles() || !navigationTileCache.length) {
-    setHoveredTile(null);
+    setHoveredTile(null, false);
     return;
   }
 
-  const tileDocument = getNavigationTileAt(pointer.clientX, pointer.clientY);
-  setHoveredTile(tileDocument);
+  const tileDocument = getVisibleNavigationTileAt(pointer.clientX, pointer.clientY);
+  const nav = navData(tileDocument);
+  setHoveredTile(tileDocument, Boolean(tileDocument && canTrigger(tileDocument, nav)));
 }
 
 function onPointerMove(event) {
@@ -231,7 +246,7 @@ function onPointerLeave() {
     hoverFrame = null;
   }
 
-  setHoveredTile(null);
+  setHoveredTile(null, false);
 }
 
 function bindCanvasElement() {
@@ -288,7 +303,7 @@ function refreshCacheForTile(tileDocument) {
   rebuildNavigationTileCache();
 
   if (hoveredTileId && !navigationTileCache.some((tile) => tile.id === hoveredTileId)) {
-    setHoveredTile(null);
+    setHoveredTile(null, false);
   }
 }
 

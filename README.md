@@ -2,97 +2,132 @@
 
 **Canvas Tile Navigation** is a system-agnostic Foundry VTT V14 module for visual Scene navigation directly on the Canvas.
 
-The goal is intentionally narrow:
+> Preparation first, navigation instantly during play.
 
-> Prepare Scene links visually, then navigate instantly during play.
+## 1.1.0
 
-## 1.0.0-rc.1
+Version 1.1 adds route topology and physical player navigation while preserving the 1.0 workflow.
 
-This patch is rebased directly on the validated v0.1.2 build and changes only the full-Tile interaction area and the default icon tint.
+### Navigation Links
 
-### Scene drop
+Drag a Scene from the Scene Directory onto the Canvas to create a Navigation Link.
 
-- Drag a Scene normally: CTN owns the drop and creates one navigation Tile.
-- Start dragging the Scene normally, then hold **Shift before releasing it on the Canvas**: CTN ignores that drop completely so Foundry or another module can handle it.
-- CTN has no MATT-specific dependency.
+- Normal Scene drop: CTN owns the drop.
+- Start dragging normally, then hold **Shift before releasing**: CTN ignores the drop so Foundry or another module such as MATT can handle it.
+- A normal GM navigation action **activates** the destination Scene.
+- `Shift + navigation gesture` is GM Preview: only the GM views the destination. Active Scene, players, and Tokens are not changed.
+- A player action never activates the Scene and never moves the whole table. It moves only that player.
 
-### Native size
+### Physical player interaction
 
-CTN no longer has Default Tile Width / Default Tile Height settings.
+Players can trigger a visible/player-enabled Navigation Link only when their assigned `User.character` Token is:
 
-Every new Navigation Tile is created as a **square** whose side length is the current Scene's native **Grid Size (pixels)**.
+- on the Navigation Tile; or
+- directly adjacent to it.
 
-That same Scene grid size exists even when the Scene is configured as Gridless, so CTN still uses the Scene's native scale instead of maintaining a second size setting.
+For gridless Scenes, CTN uses one configured grid-size worth of distance as the interaction radius.
 
-### Interaction
+GM interaction is never range-limited.
 
-The first live test exposed a V14 Collection bug in CTN's Canvas scanner. That scanner has been rebuilt:
+### Route pairing
 
-- CTN uses `canvas.scene.tiles.contents`, which is the V14 array of TileDocument values.
-- Only Tiles carrying CTN's navigation flag are cached and considered.
-- MATT and other ordinary Tiles are ignored by CTN's interaction scanner.
-- Pointer hover processing is limited to at most once per animation frame.
-- Cursor state is only changed when the hovered CTN Tile actually changes.
-- Click and double-click still perform an immediate hit test when needed.
+A paired route is two Navigation Links that point back to each other's Scenes.
 
-Configured gestures:
+Example:
 
-- Single Left Click
-- Double Left Click
-- Middle Click
-- Alt + Left Click
-- Ctrl + Left Click
+```text
+Scene A: A → B
+Scene B: B → A
+```
 
-**Editing rule:** while the GM has the native Tiles Layer active, Foundry's normal Tile editing behavior wins. CTN does not navigate from clicks in that mode, so Tiles can still be selected, moved, resized, and double-clicked to open Tile Configuration.
+When the relationship is unambiguous, CTN pairs the two automatically.
 
-Switch back to a gameplay layer (for example Tokens) to test navigation clicks.
+The return Navigation Link is also the arrival location for Tokens. This means the ordinary A ↔ B loop needs no extra arrival marker.
 
-### v0.1.3 focused fixes
+When there are multiple routes between the same Scenes, each additional route receives a stable automatic discriminator:
 
-- CTN uses Foundry V14's native `TileDocument.shape.testPoint()` for the clickable area, so the full Tile rectangle is actionable rather than only one corner.
-- A new **Default Icon Tint** world setting is copied to newly created Navigation Icon Tiles.
-- Existing Visibility, Trigger Permission, Navigation Target, gesture, display, and icon defaults from v0.1.2 are preserved.
-- Tint application is non-blocking: a tint failure cannot prevent Tile creation or registration of the remaining CTN settings.
+```text
+Mina dos Passos Argênteos
+Mina dos Passos Argênteos — 2
+Mina dos Passos Argênteos — 3
+```
 
+A custom label may replace the displayed name without changing the internal route identity.
 
-### 1.0.0 RC1 icon polish
+### One-Way Arrival Points
 
-The built-in navigation icon pack has been redrawn and is bundled locally with the module:
+Some routes deliberately have no return: a pit, a trap, a portal that closes, a one-way teleport, and similar transitions.
 
-- Generic Arrow
-- Enter Door
-- Exit Door
-- Stairs Up
-- Stairs Down
-- Return / Back
+Use the Tiles Scene Controls tool **Create One-Way Arrival Point**, then click the destination map.
 
-The stair arrows now sit above and follow the direction of the steps, while Enter and Exit use clearly opposing door-navigation metaphors.
+A One-Way Arrival Point:
 
-`missing-scene.png` is an internal technical fallback asset and is not part of the normal navigation icon choices.
+- is GM-only;
+- is not clickable by players;
+- is used only as a Token insertion location;
+- can be selected by a Navigation Link configured as **One-Way Route**.
 
-No icon requires an external URL or network request during play.
+### Token arrival
 
-### Tile Configuration
+When a player navigates individually, only that player's assigned character Token is placed at the paired return Link or One-Way Arrival Point.
 
-Double-click a CTN Tile while editing Tiles to open the normal Tile Configuration.
+When the GM commits a **Bring Everyone** transition, CTN processes active non-GM users whose assigned character Tokens are present in the source Scene and places those Tokens at the destination arrival location before activating/pulling the Scene.
 
-The CTN section is now inserted only inside the native **Appearance** tab instead of remaining visible beneath every tab.
+If the Actor already has a Token in the destination Scene, CTN repositions it. Otherwise CTN creates one from the source Token data.
 
-### Navigation
+### Destination labels
 
-Per-Tile configuration still supports:
+Default label behavior is configured globally:
 
-- destination Scene;
-- Scene Thumbnail or Navigation Icon;
-- icon choice;
-- custom label storage;
-- navigation gesture;
-- GM-only or Everyone visibility;
-- GM-only or Everyone trigger permission;
-- Bring Everyone or Triggering User Only.
+- Off
+- On Hover
+- Always
 
-Navigation changes the viewed Scene and does not activate the destination Scene.
+`On Hover` is the default.
 
-## Repository
+Displayed text is dynamic:
 
-https://github.com/hammer-PvP/Canvas-Tile-Navigation
+1. Custom Label, if present.
+2. Destination Scene name otherwise.
+3. Automatic route discriminator for additional routes.
+
+CTN does not store the Scene name as route authority.
+
+### Route diagnostics
+
+CTN continuously validates the route network.
+
+Statuses include:
+
+- Linked
+- One-Way
+- Unlinked
+- Ambiguous
+- Broken
+
+For the GM, unresolved route diagnostics override the normal label preference and remain visible on the Canvas until resolved.
+
+New unresolved/broken routes also raise a yellow permanent Foundry notification which the GM dismisses manually.
+
+### Route Manager
+
+**Game Settings → Canvas Tile Navigation → Route Manager**
+
+The Route Manager provides a World-wide view of routes and lets the GM:
+
+- locate a route;
+- open its Tile configuration;
+- explicitly pair a return link;
+- select a One-Way Arrival Point;
+- clear a route resolution.
+
+### Release assets
+
+GitHub releases should include:
+
+- `module.json`
+- `canvas-tile-navigation.zip`
+
+Manifest URL:
+
+`https://github.com/hammer-PvP/Canvas-Tile-Navigation/releases/latest/download/module.json`
