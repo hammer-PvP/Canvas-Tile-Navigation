@@ -10,6 +10,12 @@ let boundElement = null;
 let pointerUpHandler = null;
 let doubleClickHandler = null;
 let pointerMoveHandler = null;
+let pointerLeaveHandler = null;
+
+let navigationTileCache = [];
+let hoverFrame = null;
+let pendingPointer = null;
+let hoveredTileId = null;
 
 function navData(tileDocument) {
   return tileDocument?.getFlag?.(MODULE_ID, "navigation") ?? null;
@@ -28,9 +34,24 @@ function canTrigger(nav) {
   return game.user?.isGM || nav?.triggerPermission === TRIGGER_PERMISSION.EVERYONE;
 }
 
-function canvasPoint(event) {
+function rebuildNavigationTileCache() {
+  const tiles = canvas?.scene?.tiles?.contents;
+  navigationTileCache = Array.isArray(tiles)
+    ? tiles.filter((tile) => navData(tile)?.enabled)
+    : [];
+}
+
+function belongsToCurrentScene(tileDocument) {
+  return Boolean(
+    tileDocument
+    && canvas?.scene
+    && tileDocument.parent?.id === canvas.scene.id
+  );
+}
+
+function canvasPoint(clientX, clientY) {
   if (!canvas?.ready) return null;
-  return canvas.canvasCoordinatesFromClient({ x: event.clientX, y: event.clientY });
+  return canvas.canvasCoordinatesFromClient({ x: clientX, y: clientY });
 }
 
 function containsPoint(tileDocument, point) {
@@ -40,56 +61,59 @@ function containsPoint(tileDocument, point) {
   const height = Number(tileDocument.height) || 0;
   if (!width || !height) return false;
 
-  const anchorX = Number(tileDocument.texture?.anchorX ?? 0.5);
-  const anchorY = Number(tileDocument.texture?.anchorY ?? 0.5);
-  const originX = x + (width * anchorX);
-  const originY = y + (height * anchorY);
-
+  // TileDocument x/y describe the document rectangle. Rotation is around its center.
+  const centerX = x + (width / 2);
+  const centerY = y + (height / 2);
   const angle = -(Number(tileDocument.rotation) || 0) * (Math.PI / 180);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const dx = point.x - originX;
-  const dy = point.y - originY;
+  const dx = point.x - centerX;
+  const dy = point.y - centerY;
 
-  // Inverse-rotate the pointer into the Tile's unrotated document rectangle.
-  const unrotatedX = originX + (dx * cos) - (dy * sin);
-  const unrotatedY = originY + (dx * sin) + (dy * cos);
+  const localX = centerX + (dx * cos) - (dy * sin);
+  const localY = centerY + (dx * sin) + (dy * cos);
 
   const minX = Math.min(x, x + width);
   const maxX = Math.max(x, x + width);
   const minY = Math.min(y, y + height);
   const maxY = Math.max(y, y + height);
 
-  return unrotatedX >= minX
-    && unrotatedX <= maxX
-    && unrotatedY >= minY
-    && unrotatedY <= maxY;
+  return localX >= minX
+    && localX <= maxX
+    && localY >= minY
+    && localY <= maxY;
 }
 
-function getNavigationTileAt(event) {
-  const point = canvasPoint(event);
-  if (!point || !canvas?.scene?.tiles) return null;
+function isAbove(candidate, current) {
+  if (!current) return true;
 
-  const candidates = [...canvas.scene.tiles]
-    .map(([, tile]) => tile)
-    .filter((tile) => {
-      const nav = navData(tile);
-      return nav?.enabled
-        && canSee(tile, nav)
-        && canTrigger(nav)
-        && containsPoint(tile, point);
-    })
-    .sort((a, b) => {
-      const elevationA = Number(a.elevation) || 0;
-      const elevationB = Number(b.elevation) || 0;
-      if (elevationA !== elevationB) return elevationB - elevationA;
+  const elevationA = Number(candidate.elevation) || 0;
+  const elevationB = Number(current.elevation) || 0;
+  if (elevationA !== elevationB) return elevationA > elevationB;
 
-      const sortA = Number(a.sort) || 0;
-      const sortB = Number(b.sort) || 0;
-      return sortB - sortA;
-    });
+  const sortA = Number(candidate.sort) || 0;
+  const sortB = Number(current.sort) || 0;
+  return sortA > sortB;
+}
 
-  return candidates[0] ?? null;
+function getNavigationTileAt(clientX, clientY) {
+  if (!navigationTileCache.length) return null;
+
+  const point = canvasPoint(clientX, clientY);
+  if (!point) return null;
+
+  let best = null;
+
+  for (const tile of navigationTileCache) {
+    const nav = navData(tile);
+    if (!nav?.enabled) continue;
+    if (!canSee(tile, nav)) continue;
+    if (!canTrigger(nav)) continue;
+    if (!containsPoint(tile, point)) continue;
+    if (isAbove(tile, best)) best = tile;
+  }
+
+  return best;
 }
 
 function modifiers(event) {
@@ -125,7 +149,7 @@ async function activate(tileDocument, event) {
 function onPointerUp(event) {
   if (isEditingTiles()) return;
 
-  const tileDocument = getNavigationTileAt(event);
+  const tileDocument = getNavigationTileAt(event.clientX, event.clientY);
   if (!tileDocument) return;
 
   const nav = navData(tileDocument);
@@ -138,7 +162,7 @@ function onDoubleClick(event) {
   if (isEditingTiles()) return;
   if (event.button !== 0 || event.altKey || event.ctrlKey) return;
 
-  const tileDocument = getNavigationTileAt(event);
+  const tileDocument = getNavigationTileAt(event.clientX, event.clientY);
   if (!tileDocument) return;
 
   const nav = navData(tileDocument);
@@ -147,22 +171,61 @@ function onDoubleClick(event) {
   void activate(tileDocument, event);
 }
 
-function onPointerMove(event) {
+function setHoveredTile(tileDocument) {
   if (!boundElement) return;
 
-  if (isEditingTiles()) {
-    boundElement.style.cursor = "";
+  const nextId = tileDocument?.id ?? null;
+  if (nextId === hoveredTileId) return;
+
+  hoveredTileId = nextId;
+  boundElement.style.cursor = nextId ? "pointer" : "";
+}
+
+function processPointerMove() {
+  hoverFrame = null;
+
+  if (!boundElement || !pendingPointer) return;
+
+  const pointer = pendingPointer;
+  pendingPointer = null;
+
+  if (isEditingTiles() || !navigationTileCache.length) {
+    setHoveredTile(null);
     return;
   }
 
-  const tileDocument = getNavigationTileAt(event);
-  boundElement.style.cursor = tileDocument ? "pointer" : "";
+  const tileDocument = getNavigationTileAt(pointer.clientX, pointer.clientY);
+  setHoveredTile(tileDocument);
+}
+
+function onPointerMove(event) {
+  pendingPointer = {
+    clientX: event.clientX,
+    clientY: event.clientY
+  };
+
+  if (hoverFrame !== null) return;
+  hoverFrame = requestAnimationFrame(processPointerMove);
+}
+
+function onPointerLeave() {
+  pendingPointer = null;
+
+  if (hoverFrame !== null) {
+    cancelAnimationFrame(hoverFrame);
+    hoverFrame = null;
+  }
+
+  setHoveredTile(null);
 }
 
 function bindCanvasElement() {
   const element = canvas?.app?.canvas ?? canvas?.app?.view ?? null;
   if (!(element instanceof HTMLCanvasElement)) return;
-  if (boundElement === element) return;
+  if (boundElement === element) {
+    rebuildNavigationTileCache();
+    return;
+  }
 
   unbindCanvasElement();
 
@@ -170,29 +233,57 @@ function bindCanvasElement() {
   pointerUpHandler = onPointerUp;
   doubleClickHandler = onDoubleClick;
   pointerMoveHandler = onPointerMove;
+  pointerLeaveHandler = onPointerLeave;
 
   element.addEventListener("pointerup", pointerUpHandler);
   element.addEventListener("dblclick", doubleClickHandler);
   element.addEventListener("pointermove", pointerMoveHandler);
+  element.addEventListener("pointerleave", pointerLeaveHandler);
+
+  rebuildNavigationTileCache();
 }
 
 function unbindCanvasElement() {
+  if (hoverFrame !== null) {
+    cancelAnimationFrame(hoverFrame);
+    hoverFrame = null;
+  }
+
+  pendingPointer = null;
+  navigationTileCache = [];
+  hoveredTileId = null;
+
   if (!boundElement) return;
 
   if (pointerUpHandler) boundElement.removeEventListener("pointerup", pointerUpHandler);
   if (doubleClickHandler) boundElement.removeEventListener("dblclick", doubleClickHandler);
   if (pointerMoveHandler) boundElement.removeEventListener("pointermove", pointerMoveHandler);
+  if (pointerLeaveHandler) boundElement.removeEventListener("pointerleave", pointerLeaveHandler);
 
   boundElement.style.cursor = "";
   boundElement = null;
   pointerUpHandler = null;
   doubleClickHandler = null;
   pointerMoveHandler = null;
+  pointerLeaveHandler = null;
+}
+
+function refreshCacheForTile(tileDocument) {
+  if (!belongsToCurrentScene(tileDocument)) return;
+  rebuildNavigationTileCache();
+
+  if (hoveredTileId && !navigationTileCache.some((tile) => tile.id === hoveredTileId)) {
+    setHoveredTile(null);
+  }
 }
 
 export function registerTileInteractionHooks() {
   Hooks.on("canvasReady", bindCanvasElement);
   Hooks.on("canvasTearDown", unbindCanvasElement);
+
+  Hooks.on("createTile", refreshCacheForTile);
+  Hooks.on("updateTile", refreshCacheForTile);
+  Hooks.on("deleteTile", refreshCacheForTile);
 
   if (canvas?.ready) bindCanvasElement();
 }

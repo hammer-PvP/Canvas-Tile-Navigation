@@ -6,14 +6,14 @@ The goal is intentionally narrow:
 
 > Prepare Scene links visually, then navigate instantly during play.
 
-## v0.1.1
+## v0.1.2
 
 This patch incorporates the first live Foundry test.
 
 ### Scene drop
 
 - Drag a Scene normally: CTN owns the drop and creates one navigation Tile.
-- Hold **Shift while dropping**: CTN ignores the drop completely so Foundry or another module can handle it.
+- Start dragging the Scene normally, then hold **Shift before releasing it on the Canvas**: CTN ignores that drop completely so Foundry or another module can handle it.
 - CTN has no MATT-specific dependency.
 
 ### Native size
@@ -26,9 +26,14 @@ That same Scene grid size exists even when the Scene is configured as Gridless, 
 
 ### Interaction
 
-Navigation interaction is handled at the Canvas level rather than relying on the native Tiles Layer.
+The first live test exposed a V14 Collection bug in CTN's Canvas scanner. That scanner has been rebuilt:
 
-This is important because Foundry players do not normally interact with the Tiles Layer.
+- CTN uses `canvas.scene.tiles.contents`, which is the V14 array of TileDocument values.
+- Only Tiles carrying CTN's navigation flag are cached and considered.
+- MATT and other ordinary Tiles are ignored by CTN's interaction scanner.
+- Pointer hover processing is limited to at most once per animation frame.
+- Cursor state is only changed when the hovered CTN Tile actually changes.
+- Click and double-click still perform an immediate hit test when needed.
 
 Configured gestures:
 

@@ -38,7 +38,7 @@
   "CTN.TileConfig.Visibility": "Visible To",
   "CTN.TileConfig.TriggerPermission": "Can Trigger",
   "CTN.TileConfig.NavigationMode": "Move",
-  "CTN.TileConfig.BypassHint": "Hold Shift while dropping a Scene to bypass Canvas Tile Navigation and let Foundry or another module handle the drop.",
+  "CTN.TileConfig.BypassHint": "To bypass Canvas Tile Navigation, start dragging the Scene normally, then hold Shift before releasing it on the Canvas.",
   "CTN.Notifications.Created": "Navigation Tile created for {scene}.",
   "CTN.Notifications.CreateFailed": "Canvas Tile Navigation could not create the Tile.",
   "CTN.Notifications.SceneResolveFailed": "Canvas Tile Navigation could not resolve the dropped Scene.",

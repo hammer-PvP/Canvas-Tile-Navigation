@@ -38,7 +38,7 @@
   "CTN.TileConfig.Visibility": "Visível para",
   "CTN.TileConfig.TriggerPermission": "Pode acionar",
   "CTN.TileConfig.NavigationMode": "Mover",
-  "CTN.TileConfig.BypassHint": "Segure Shift ao soltar uma Scene para ignorar o Canvas Tile Navigation e deixar o Foundry ou outro módulo tratar o drop.",
+  "CTN.TileConfig.BypassHint": "Para ignorar o Canvas Tile Navigation, comece a arrastar a Scene normalmente e segure Shift antes de soltá-la no Canvas.",
   "CTN.Notifications.Created": "Tile de navegação criado para {scene}.",
   "CTN.Notifications.CreateFailed": "O Canvas Tile Navigation não conseguiu criar o Tile.",
   "CTN.Notifications.SceneResolveFailed": "O Canvas Tile Navigation não conseguiu resolver a Scene arrastada.",
