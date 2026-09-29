@@ -1,0 +1,12 @@
+.ctn-config {
+  margin-top: 0.75rem;
+}
+
+.ctn-config legend {
+  font-weight: 700;
+}
+
+.ctn-config .ctn-bypass-hint {
+  margin: 0.5rem 0 0;
+  opacity: 0.8;
+}
