@@ -7,6 +7,7 @@ import {
   TRIGGER_INITIAL_VISIBILITY,
   TRIGGER_PAUSE,
   TRIGGER_REVEAL,
+  TRIGGER_SAVE_STATES,
   TRIGGER_STATES,
   TRIGGER_ZONE_ICON
 } from "./constants.mjs";
@@ -16,6 +17,7 @@ import { tileBounds, tokenBounds } from "./token-service.mjs";
 import {
   applyTriggerDamage,
   rollTriggerDamage,
+  supportsNativeTriggerDamage,
   supportsTriggerRules
 } from "./trigger-adapter.mjs";
 
@@ -84,6 +86,8 @@ export function defaultTriggerData() {
     initialVisibility: TRIGGER_INITIAL_VISIBILITY.HIDDEN,
     pauseMode: TRIGGER_PAUSE.ON_TRIGGER,
     saveEnabled: false,
+    saveState: TRIGGER_SAVE_STATES.OFF,
+    disableSaveOnPersistentHazard: true,
     saveAbility: "dex",
     saveDC: 10,
     damageComponents: "[]",
@@ -99,15 +103,47 @@ export function defaultTriggerData() {
 export function triggerData(tile) {
   const raw = tile?.getFlag?.(MODULE_ID, "trigger");
   if (!raw?.enabled) return null;
+
+  const saveEnabled = raw.saveEnabled === true || raw.saveEnabled === "true";
+  const configuredSaveState = saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF;
+  const disableSaveOnPersistentHazard = raw.disableSaveOnPersistentHazard !== false
+    && raw.disableSaveOnPersistentHazard !== "false";
+  const validRuntimeSaveState = [TRIGGER_SAVE_STATES.ON, TRIGGER_SAVE_STATES.OFF].includes(raw.saveState)
+    ? raw.saveState
+    : null;
+
+  // Backward-compatible migration: an already active persistent hazard from an
+  // older CTN version should immediately behave like the new default and skip
+  // Saving Throws on subsequent entries.
+  const migratedPersistentState = raw.state === TRIGGER_STATES.ACTIVE_HAZARD
+    && raw.afterTrigger === TRIGGER_AFTER.PERSISTENT_DAMAGE
+    && disableSaveOnPersistentHazard
+    ? TRIGGER_SAVE_STATES.OFF
+    : configuredSaveState;
+
+  const runtimeSaveState = raw.state === TRIGGER_STATES.ARMED
+    ? configuredSaveState
+    : (validRuntimeSaveState ?? migratedPersistentState);
+
   return {
     ...defaultTriggerData(),
     ...raw,
-    saveEnabled: raw.saveEnabled === true || raw.saveEnabled === "true",
+    saveEnabled,
+    saveState: runtimeSaveState,
+    disableSaveOnPersistentHazard,
     saveDC: Number(raw.saveDC) || 10,
     damageComponents: typeof raw.damageComponents === "string"
       ? raw.damageComponents
       : JSON.stringify(parseDamageComponents(raw.damageComponents))
   };
+}
+
+function configuredSaveState(data) {
+  return data?.saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF;
+}
+
+function saveIsActive(data) {
+  return data?.saveState === TRIGGER_SAVE_STATES.ON;
 }
 
 export function isTriggerTile(tile) {
@@ -349,7 +385,8 @@ async function hideAndRearm(trigger) {
   if (!data) return;
   await trigger.update({
     hidden: data.initialVisibility === TRIGGER_INITIAL_VISIBILITY.HIDDEN,
-    [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.ARMED
+    [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.ARMED,
+    [`flags.${MODULE_ID}.trigger.saveState`]: configuredSaveState(data)
   }, { ctnTriggerState: true });
 }
 
@@ -359,8 +396,15 @@ async function disableTrigger(trigger) {
   }, { ctnTriggerState: true });
 }
 
-function conditionMatches(condition, resolution) {
+function conditionMatches(condition, resolution, { saveActive = true, kind = "damage" } = {}) {
   if (condition === TRIGGER_CONDITIONS.ALWAYS) return true;
+
+  // Once Save is OFF, save-dependent damage conditions collapse to direct
+  // damage. This is what allows a revealed persistent hazard to keep causing
+  // damage without asking for PASS / NOT PASS again. Transition conditions do
+  // not silently broaden in the same way.
+  if (!saveActive) return kind === "damage";
+
   if (condition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS) return resolution.saveResult !== null;
   if (condition === TRIGGER_CONDITIONS.FAILED_SAVE) return resolution.saveResult === false;
   if (condition === TRIGGER_CONDITIONS.SUCCESSFUL_SAVE) return resolution.saveResult === true;
@@ -369,6 +413,7 @@ function conditionMatches(condition, resolution) {
 
 function damageMultiplier(trigger, resolution) {
   const data = triggerData(trigger);
+  if (!saveIsActive(data)) return 1;
   return data?.damageCondition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS && resolution.saveResult === true ? 0.5 : 1;
 }
 
@@ -398,22 +443,64 @@ function resolutionButton(action, label, icon = "") {
   return `<button type="button" data-ctn-trigger-action="${escapeHTML(action)}">${icon ? `<i class="${escapeHTML(icon)}"></i> ` : ""}${escapeHTML(label)}</button>`;
 }
 
-function renderResolutionCard(trigger, token, resolution) {
+function resolutionSaveRequired(data, resolution) {
+  if (typeof resolution?.saveRequired === "boolean") return resolution.saveRequired;
+  return Boolean(saveIsActive(data) && supportsTriggerRules());
+}
+
+function resolutionEligibility(trigger, token, resolution) {
   const data = triggerData(trigger);
   const actor = actorOfToken(token);
   const components = getTriggerDamageComponents(data);
-  const persistentHazard = resolution.mode === "persistent-damage";
-  const saveRequired = Boolean(!persistentHazard && data?.saveEnabled && supportsTriggerRules());
+  const saveRequired = resolutionSaveRequired(data, resolution);
   const saveResolved = resolution.saveResult !== null;
-  const damageEligible = Boolean(components.length) && (persistentHazard
-    || ((!saveRequired || saveResolved) && conditionMatches(data.damageCondition, resolution)));
-  const transitionEligible = !persistentHazard
+  const saveGateOpen = !saveRequired || saveResolved;
+  const nativeDamage = supportsNativeTriggerDamage(actor);
+  const damageEligible = Boolean(components.length)
+    && saveGateOpen
+    && conditionMatches(data.damageCondition, resolution, { saveActive: saveRequired, kind: "damage" });
+  const transitionEligible = resolution.mode !== "persistent-damage"
     && Boolean(data.transitionSceneUuid && data.transitionArrivalUuid)
-    && (!saveRequired || saveResolved)
-    && conditionMatches(data.transitionCondition, resolution);
+    && saveGateOpen
+    && conditionMatches(data.transitionCondition, resolution, { saveActive: saveRequired, kind: "transition" });
   const locked = Boolean(triggerLockData(token)?.active);
+  return {
+    actor,
+    components,
+    damageEligible,
+    data,
+    locked,
+    nativeDamage,
+    saveRequired,
+    saveResolved,
+    transitionEligible
+  };
+}
 
-  const saveText = persistentHazard || !saveRequired
+function resolutionIsComplete(trigger, token, resolution) {
+  const ctx = resolutionEligibility(trigger, token, resolution);
+  if (resolution.manualResolved && !ctx.locked) return true;
+  if (ctx.saveRequired && !ctx.saveResolved) return false;
+  if (ctx.damageEligible && !resolution.damageApplied) return false;
+  if (ctx.transitionEligible && !resolution.transitionDone) return false;
+  if (ctx.locked) return false;
+  return true;
+}
+
+function renderResolutionCard(trigger, token, resolution) {
+  const {
+    actor,
+    components,
+    damageEligible,
+    data,
+    locked,
+    nativeDamage,
+    saveRequired,
+    saveResolved,
+    transitionEligible
+  } = resolutionEligibility(trigger, token, resolution);
+
+  const saveText = !saveRequired
     ? game.i18n.localize("CTN.Trigger.NoSave")
     : saveResolved
       ? `${String(data.saveAbility).toUpperCase()} DC ${Number(data.saveDC) || 10} — <strong>${resolution.saveResult ? game.i18n.localize("CTN.Trigger.Success") : game.i18n.localize("CTN.Trigger.Failure")}</strong>`
@@ -429,7 +516,7 @@ function renderResolutionCard(trigger, token, resolution) {
 
   const defaultMultiplier = Number.isFinite(Number(resolution.damageMultiplier))
     ? Number(resolution.damageMultiplier)
-    : (data.damageCondition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS && resolution.saveResult === true ? 0.5 : 1);
+    : (saveRequired && data.damageCondition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS && resolution.saveResult === true ? 0.5 : 1);
   const multiplierOptions = [
     [0.5, game.i18n.localize("CTN.Trigger.MultiplierHalf")],
     [1, game.i18n.localize("CTN.Trigger.MultiplierNormal")],
@@ -441,17 +528,32 @@ function renderResolutionCard(trigger, token, resolution) {
     buttons.push(resolutionButton("save-pass", game.i18n.localize("CTN.Trigger.Pass"), "fa-solid fa-check"));
     buttons.push(resolutionButton("save-fail", game.i18n.localize("CTN.Trigger.NotPass"), "fa-solid fa-xmark"));
   }
-  if (damageEligible && !resolution.damageRolls?.length) buttons.push(resolutionButton("roll-damage", game.i18n.localize("CTN.Trigger.RollDamage"), "fa-solid fa-dice"));
-  if (damageEligible && resolution.damageRolls?.length && !resolution.damageApplied) buttons.push(resolutionButton("apply-damage", game.i18n.localize("CTN.Trigger.ApplyDamage"), "fa-solid fa-heart-crack"));
-  if (transitionEligible && !resolution.transitionDone) buttons.push(resolutionButton("move-token", game.i18n.localize("CTN.Trigger.MoveToken"), "fa-solid fa-person-falling"));
-  if (!locked && (!saveRequired || saveResolved)) buttons.push(resolutionButton("resolve-trigger", game.i18n.localize("CTN.Trigger.ResolveTrigger"), "fa-solid fa-check-double"));
-  if (!resolution.resolved) buttons.push(resolutionButton("ignore-trigger", game.i18n.localize("CTN.Trigger.Ignore"), "fa-solid fa-forward"));
 
-  const multiplierControl = damageEligible && resolution.damageRolls?.length && !resolution.damageApplied
+  // D&D5e resolves eligible damage automatically through Actor5e.applyDamage.
+  // The generic CTN path retains its explicit Roll / Apply controls.
+  if (!nativeDamage && damageEligible && !resolution.damageRolls?.length) {
+    buttons.push(resolutionButton("roll-damage", game.i18n.localize("CTN.Trigger.RollDamage"), "fa-solid fa-dice"));
+  }
+  if (!nativeDamage && damageEligible && resolution.damageRolls?.length && !resolution.damageApplied) {
+    buttons.push(resolutionButton("apply-damage", game.i18n.localize("CTN.Trigger.ApplyDamage"), "fa-solid fa-heart-crack"));
+  }
+  if (transitionEligible && !resolution.transitionDone) {
+    buttons.push(resolutionButton("move-token", game.i18n.localize("CTN.Trigger.MoveToken"), "fa-solid fa-person-falling"));
+  }
+  if (!nativeDamage && damageEligible && !resolution.damageApplied && !locked) {
+    buttons.push(resolutionButton("resolve-trigger", game.i18n.localize("CTN.Trigger.ResolveTrigger"), "fa-solid fa-check-double"));
+  }
+  if (locked) {
+    buttons.push(resolutionButton("release-token", game.i18n.localize("CTN.Trigger.ReleaseToken"), "fa-solid fa-lock-open"));
+  }
+
+  const multiplierControl = !nativeDamage && damageEligible && resolution.damageRolls?.length && !resolution.damageApplied
     ? `<div class="ctn-trigger-card__multiplier"><label>${escapeHTML(game.i18n.localize("CTN.Trigger.DamageMultiplier"))}</label><select data-ctn-damage-multiplier>${multiplierOptions}</select></div>`
     : resolution.damageApplied
       ? `<div class="ctn-trigger-card__result">${escapeHTML(game.i18n.localize("CTN.Trigger.AppliedMultiplier"))}: ×${escapeHTML(resolution.damageMultiplier ?? defaultMultiplier)}</div>`
       : "";
+
+  const complete = resolutionIsComplete(trigger, token, resolution);
 
   return `
     <section class="ctn-trigger-card" data-ctn-trigger-resolution="${escapeHTML(resolution.id)}">
@@ -460,8 +562,8 @@ function renderResolutionCard(trigger, token, resolution) {
       ${locked ? `<p class="ctn-trigger-card__paused"><i class="fa-solid fa-lock"></i> ${escapeHTML(game.i18n.localize("CTN.Trigger.MovementPaused"))}</p>` : ""}
       <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Save"))}:</strong> ${saveText}</div>
       <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Damage"))}:</strong><br>${damageText}${rolledText}${multiplierControl}</div>
-      ${!persistentHazard && data.transitionSceneUuid ? `<div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Transition"))}:</strong> ${escapeHTML(resolveScene(data.transitionSceneUuid)?.name ?? "—")}</div>` : ""}
-      ${resolution.resolved ? `<p class="ctn-trigger-card__resolved">${escapeHTML(game.i18n.localize("CTN.Trigger.Resolved"))}</p>` : `<div class="ctn-trigger-card__actions">${buttons.join("")}</div>`}
+      ${resolution.mode !== "persistent-damage" && data.transitionSceneUuid ? `<div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Transition"))}:</strong> ${escapeHTML(resolveScene(data.transitionSceneUuid)?.name ?? "—")}</div>` : ""}
+      ${complete ? `<p class="ctn-trigger-card__resolved">${escapeHTML(game.i18n.localize("CTN.Trigger.Resolved"))}</p>` : `<div class="ctn-trigger-card__actions">${buttons.join("")}</div>`}
     </section>
   `;
 }
@@ -470,6 +572,7 @@ async function updateResolutionMessage(message, resolution) {
   const trigger = resolveTile(resolution.triggerUuid);
   const token = resolveToken(resolution.tokenUuid);
   if (!trigger || !token) return;
+  resolution.resolved = resolutionIsComplete(trigger, token, resolution);
   await message.update({
     content: renderResolutionCard(trigger, token, resolution),
     [`flags.${MODULE_ID}.triggerResolution`]: resolution
@@ -477,6 +580,7 @@ async function updateResolutionMessage(message, resolution) {
 }
 
 async function createResolutionMessage(trigger, token, requesterId, { mode = "initial" } = {}) {
+  const data = triggerData(trigger);
   const resolution = {
     id: foundry.utils.randomID(),
     mode,
@@ -484,12 +588,16 @@ async function createResolutionMessage(trigger, token, requesterId, { mode = "in
     tokenUuid: token.uuid,
     requesterId,
     actorUuid: actorOfToken(token)?.uuid ?? "",
+    saveRequired: Boolean(saveIsActive(data) && supportsTriggerRules()),
+    saveStateAtStart: data?.saveState ?? TRIGGER_SAVE_STATES.OFF,
     saveResult: null,
     saveTotal: null,
     damageRolls: [],
     damageMultiplier: null,
     damageApplied: false,
     transitionDone: false,
+    behaviorFinalized: false,
+    manualResolved: false,
     resolved: false
   };
 
@@ -509,6 +617,7 @@ async function applyRevealForPhase(trigger, resolution, phase) {
 }
 
 async function finalizeTriggerBehavior(trigger, resolution) {
+  if (resolution.behaviorFinalized) return;
   const data = triggerData(trigger);
   if (!data) return;
 
@@ -518,31 +627,72 @@ async function finalizeTriggerBehavior(trigger, resolution) {
       break;
     case TRIGGER_AFTER.DIRECT_TRANSITION:
     case TRIGGER_AFTER.REMAIN_VISIBLE:
-      await revealTrigger(trigger, TRIGGER_STATES.REVEALED);
+      // Visibility is owned exclusively by Reveal Tile. Post-trigger behavior
+      // changes capability/state, never visibility by itself.
+      await trigger.update({
+        [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.REVEALED
+      }, { ctnTriggerState: true });
       break;
-    case TRIGGER_AFTER.PERSISTENT_DAMAGE:
-      await revealTrigger(trigger, TRIGGER_STATES.ACTIVE_HAZARD);
+    case TRIGGER_AFTER.PERSISTENT_DAMAGE: {
+      const updates = {
+        [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.ACTIVE_HAZARD
+      };
+      if (data.disableSaveOnPersistentHazard) {
+        updates[`flags.${MODULE_ID}.trigger.saveState`] = TRIGGER_SAVE_STATES.OFF;
+      }
+      await trigger.update(updates, { ctnTriggerState: true });
       break;
+    }
     case TRIGGER_AFTER.REARM_WHEN_EMPTY:
-      await revealTrigger(trigger, TRIGGER_STATES.TRIGGERED);
+      await trigger.update({
+        [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED
+      }, { ctnTriggerState: true });
       await rearmIfEmpty(trigger);
       break;
     case TRIGGER_AFTER.REMAIN_ACTIVE_TRAP:
     default:
-      await trigger.update({ [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.ARMED }, { ctnTriggerState: true });
+      await trigger.update({
+        [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.ARMED,
+        [`flags.${MODULE_ID}.trigger.saveState`]: configuredSaveState(data)
+      }, { ctnTriggerState: true });
       break;
   }
+  resolution.behaviorFinalized = true;
 }
 
-async function releaseResolutionToken(trigger, token, resolution) {
+async function resolveNativeDamage(trigger, actor, resolution, dataSnapshot = null) {
+  if (!supportsNativeTriggerDamage(actor) || resolution.damageApplied) return false;
+  const data = dataSnapshot ?? triggerData(trigger);
+  const components = getTriggerDamageComponents(data);
+  const saveRequired = resolutionSaveRequired(data, resolution);
+  if (!components.length || (saveRequired && resolution.saveResult === null)) return false;
+  if (!conditionMatches(data.damageCondition, resolution, { saveActive: saveRequired, kind: "damage" })) return false;
+
+  resolution.damageMultiplier = saveRequired
+    && data.damageCondition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS
+    && resolution.saveResult === true
+    ? 0.5
+    : 1;
+
+  resolution.damageRolls = await rollTriggerDamage(actor, components, {
+    flavor: triggerTitle(trigger, data),
+    publicRoll: true
+  });
+  if (!resolution.damageRolls.length) return false;
+
+  const applied = await applyTriggerDamage(actor, resolution.damageRolls, {
+    multiplier: resolution.damageMultiplier
+  });
+  resolution.damageApplied = Boolean(applied);
+  if (!applied) ui.notifications.warn(game.i18n.localize("CTN.Trigger.SystemRuleUnsupported"));
+  return Boolean(applied);
+}
+
+async function releaseResolutionToken(_trigger, token, resolution) {
+  // Release is intentionally side-effect free for Trigger state. It only
+  // removes the movement lock for this occurrence.
   await clearTokenLock(token);
   emitReleaseToUser(resolution.requesterId, token.uuid);
-  if (!resolution.resolved) {
-    resolution.resolved = true;
-    if (resolution.mode !== "persistent-damage") {
-      await finalizeTriggerBehavior(trigger, resolution);
-    }
-  }
 }
 
 async function handleResolutionAction(message, action, button = null) {
@@ -557,9 +707,12 @@ async function handleResolutionAction(message, action, button = null) {
   if (!trigger || !token || !actor || !data) return;
 
   if (action === "save-pass" || action === "save-fail") {
+    const dataAtDecision = foundry.utils.deepClone(data);
     resolution.saveResult = action === "save-pass";
     resolution.saveTotal = null;
     await applyRevealForPhase(trigger, resolution, "save");
+    await finalizeTriggerBehavior(trigger, resolution);
+    await resolveNativeDamage(trigger, actor, resolution, dataAtDecision);
     await updateResolutionMessage(message, resolution);
     return;
   }
@@ -605,7 +758,6 @@ async function handleResolutionAction(message, action, button = null) {
       return;
     }
     resolution.transitionDone = true;
-    resolution.resolved = true;
     await finalizeTriggerBehavior(trigger, resolution);
     await updateResolutionMessage(message, resolution);
     return;
@@ -617,22 +769,19 @@ async function handleResolutionAction(message, action, button = null) {
     return;
   }
 
+  // Compatibility handlers for Trigger cards created by older CTN versions.
+  // New 1.1.6 cards do not render these actions.
   if (action === "resolve-trigger") {
-    resolution.resolved = true;
-    if (resolution.mode !== "persistent-damage") {
-      await finalizeTriggerBehavior(trigger, resolution);
-    }
+    if (!resolution.behaviorFinalized) await finalizeTriggerBehavior(trigger, resolution);
+    resolution.manualResolved = true;
     await updateResolutionMessage(message, resolution);
     return;
   }
 
   if (action === "ignore-trigger") {
-    await clearTokenLock(token);
-    emitReleaseToUser(resolution.requesterId, token.uuid);
-    resolution.resolved = true;
-    if (resolution.mode !== "persistent-damage") {
-      await hideAndRearm(trigger);
-    }
+    // Old "Ignore / Release" cards are treated as movement release only. They
+    // must never revert or overwrite the current Trigger Tile state.
+    await releaseResolutionToken(trigger, token, resolution);
     await updateResolutionMessage(message, resolution);
   }
 }
@@ -675,6 +824,7 @@ async function handleTriggerEnter(message) {
 
   const isPersistentHazard = data.state === TRIGGER_STATES.ACTIVE_HAZARD
     && data.afterTrigger === TRIGGER_AFTER.PERSISTENT_DAMAGE;
+  const dataAtEntry = foundry.utils.deepClone(data);
   const { message: chatMessage, resolution } = await createResolutionMessage(
     trigger,
     token,
@@ -690,9 +840,21 @@ async function handleTriggerEnter(message) {
   }
 
   if (!isPersistentHazard) {
-    await trigger.update({ [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED }, { ctnTriggerState: true });
+    await trigger.update({
+      [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED,
+      [`flags.${MODULE_ID}.trigger.saveState`]: data.saveState
+    }, { ctnTriggerState: true });
     await applyRevealForPhase(trigger, resolution, "trigger");
   }
+
+  // Save OFF means the occurrence proceeds directly into its configured
+  // consequences. Persistent hazards normally reach this path because their
+  // activation can mutate Save State to OFF.
+  if (!resolution.saveRequired) {
+    if (!isPersistentHazard) await finalizeTriggerBehavior(trigger, resolution);
+    await resolveNativeDamage(trigger, actorOfToken(token), resolution, dataAtEntry);
+  }
+
   await updateResolutionMessage(chatMessage, resolution);
 }
 

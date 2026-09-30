@@ -162,8 +162,8 @@
   "CTN.Trigger.AfterRearmEmpty": "Reveal and Re-arm When Empty",
   "CTN.Trigger.AfterRemainActive": "Remain Active Trap",
   "CTN.Trigger.ImageHint": "Use the native Tile Appearance controls to choose the trap/hazard image. CTN owns the behavior and reveal state.",
-  "CTN.Trigger.SystemRuleUnsupportedHint": "This game system has no CTN rules adapter. Scene transition still works, but Save and damage actions require the D&D5e adapter.",
-  "CTN.Trigger.SystemRuleUnsupported": "This Save/damage action requires a compatible CTN game-system adapter.",
+  "CTN.Trigger.SystemRuleUnsupportedHint": "This game system has no CTN rules adapter for Saving Throws or native damage application. Generic CTN damage controls remain available where applicable.",
+  "CTN.Trigger.SystemRuleUnsupported": "Native damage application is not available for this game system.",
   "CTN.Trigger.TokenLocked": "This Token is paused by a CTN Trigger. The GM must resolve or release it.",
   "CTN.Trigger.EnteredArea": "entered the trigger area.",
   "CTN.Trigger.MovementPaused": "Token movement is paused until the GM resolves the Trigger.",
@@ -198,5 +198,13 @@
   "CTN.Trigger.MultiplierDouble": "Double ×2",
   "CTN.Trigger.AppliedMultiplier": "Applied multiplier",
   "CTN.Trigger.ResolveTrigger": "Resolve Trigger",
-  "CTN.Notifications.AmbiguousTravelGroup": "Multiple D&D5e Groups match the current Scene. CTN will not guess which Group should travel."
+  "CTN.Notifications.AmbiguousTravelGroup": "Multiple D&D5e Groups match the current Scene. CTN will not guess which Group should travel.",
+  "CTN.Trigger.SaveInitialState": "Initial Save State",
+  "CTN.Trigger.SaveCurrentState": "Current Save State",
+  "CTN.Trigger.StateOn": "ON",
+  "CTN.Trigger.StateOff": "OFF",
+  "CTN.Trigger.PersistentHazardSave": "Persistent Hazard Save State",
+  "CTN.Trigger.PersistentHazardSaveOff": "Turn Save OFF when activated",
+  "CTN.Trigger.PersistentHazardSaveKeep": "Keep current Save state",
+  "CTN.Trigger.PersistentHazardSaveHint": "When a Trigger becomes a persistent damage area, CTN can mutate its Save state to OFF. Re-arming restores the configured initial Save state."
 }

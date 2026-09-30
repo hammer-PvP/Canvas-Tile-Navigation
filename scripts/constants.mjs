@@ -115,6 +115,11 @@ export const TRIGGER_PAUSE = Object.freeze({
   ON_TRIGGER: "on-trigger"
 });
 
+export const TRIGGER_SAVE_STATES = Object.freeze({
+  ON: "on",
+  OFF: "off"
+});
+
 export const TRIGGER_CONDITIONS = Object.freeze({
   ALWAYS: "always",
   FAILED_SAVE: "failed-save",

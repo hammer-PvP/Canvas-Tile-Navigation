@@ -4,6 +4,11 @@ export function supportsTriggerRules() {
   return game.system?.id === "dnd5e";
 }
 
+export function supportsNativeTriggerDamage(actor = null) {
+  if (!supportsTriggerRules()) return false;
+  return !actor || typeof actor.applyDamage === "function";
+}
+
 export function abilityChoices() {
   if (!supportsTriggerRules()) return [];
   return Object.entries(CONFIG.DND5E?.abilities ?? {})
@@ -22,9 +27,27 @@ function gmIds() {
   return [...game.users].filter((user) => user.isGM).map((user) => user.id);
 }
 
-export async function rollTriggerDamage(actor, components, { flavor = "" } = {}) {
+async function postRoll(roll, { actor, flavor, publicRoll }) {
+  const messageData = {
+    flavor,
+    speaker: ChatMessage.getSpeaker({ actor })
+  };
+
+  if (!publicRoll) messageData.whisper = gmIds();
+
+  try {
+    await roll.toMessage(messageData, publicRoll ? { rollMode: "publicroll" } : {});
+  } catch (_error) {
+    // Fallback for systems/Foundry builds whose Roll#toMessage signature does not
+    // accept rollMode in the options object.
+    await roll.toMessage(messageData);
+  }
+}
+
+export async function rollTriggerDamage(actor, components, { flavor = "", publicRoll = null } = {}) {
   const rollData = actor?.getRollData?.({ roll: true }) ?? actor?.getRollData?.() ?? {};
   const results = [];
+  const usePublicRoll = publicRoll ?? supportsNativeTriggerDamage(actor);
 
   for (const component of components ?? []) {
     const formula = String(component?.formula ?? "").trim();
@@ -32,10 +55,11 @@ export async function rollTriggerDamage(actor, components, { flavor = "" } = {})
 
     try {
       const roll = await new Roll(formula, rollData).evaluate();
-      await roll.toMessage({
-        flavor: flavor || `${actor?.name ?? "Token"} — ${component?.type ?? "damage"}`,
-        speaker: ChatMessage.getSpeaker({ actor }),
-        whisper: gmIds()
+      const typeLabel = component?.type || "damage";
+      await postRoll(roll, {
+        actor,
+        flavor: flavor ? `${flavor} — ${typeLabel}` : `${actor?.name ?? "Token"} — ${typeLabel}`,
+        publicRoll: usePublicRoll
       });
       results.push({
         formula,
@@ -51,7 +75,7 @@ export async function rollTriggerDamage(actor, components, { flavor = "" } = {})
 }
 
 export async function applyTriggerDamage(actor, rolledComponents, { multiplier = 1 } = {}) {
-  if (!supportsTriggerRules() || !actor || typeof actor.applyDamage !== "function") return false;
+  if (!supportsNativeTriggerDamage(actor)) return false;
   const damages = (rolledComponents ?? [])
     .filter((entry) => Number.isFinite(Number(entry?.total)))
     .map((entry) => ({
@@ -61,6 +85,9 @@ export async function applyTriggerDamage(actor, rolledComponents, { multiplier =
   if (!damages.length) return false;
 
   try {
+    // D&D5e owns resistance, immunity, vulnerability, temp HP and the rest of
+    // its damage application rules. CTN only supplies typed damage components
+    // and the multiplier selected by Trigger resolution.
     await actor.applyDamage(damages, { multiplier });
     return true;
   } catch (error) {

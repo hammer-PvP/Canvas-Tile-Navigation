@@ -15,7 +15,8 @@ import {
   TRIGGER_CONDITIONS,
   TRIGGER_INITIAL_VISIBILITY,
   TRIGGER_PAUSE,
-  TRIGGER_REVEAL
+  TRIGGER_REVEAL,
+  TRIGGER_SAVE_STATES
 } from "./constants.mjs";
 import {
   allLinks,
@@ -75,6 +76,14 @@ function booleanOptions(current) {
   ].map(([value, label]) => option(value, label, String(Boolean(current)))).join("");
 }
 
+
+function initialSaveStateOptions(enabled) {
+  return [
+    ["false", localized("CTN.Trigger.StateOff")],
+    ["true", localized("CTN.Trigger.StateOn")]
+  ].map(([value, label]) => option(value, label, String(Boolean(enabled)))).join("");
+}
+
 function triggerArrivalCandidates(sceneUuid) {
   const scene = resolveScene(sceneUuid);
   if (!scene) return [];
@@ -128,6 +137,11 @@ function triggerConfigHTML(tile, data) {
   ].map(([value, label]) => option(value, label, data.pauseMode)).join("");
 
   const abilityOptions = abilities.map((entry) => option(entry.id, entry.label, data.saveAbility)).join("");
+  const configuredSaveOptions = initialSaveStateOptions(data.saveEnabled);
+  const persistentHazardSaveOptions = [
+    ["true", localized("CTN.Trigger.PersistentHazardSaveOff")],
+    ["false", localized("CTN.Trigger.PersistentHazardSaveKeep")]
+  ].map(([value, label]) => option(value, label, String(Boolean(data.disableSaveOnPersistentHazard)))).join("");
   const damageConditions = [
     [TRIGGER_CONDITIONS.ALWAYS, localized("CTN.Trigger.ConditionAlways")],
     [TRIGGER_CONDITIONS.FAILED_SAVE, localized("CTN.Trigger.ConditionFailed")],
@@ -187,8 +201,12 @@ function triggerConfigHTML(tile, data) {
       <h4>${escapeHTML(localized("CTN.Trigger.Save"))}</h4>
       ${supported ? "" : `<p class="hint warning">${escapeHTML(localized("CTN.Trigger.SystemRuleUnsupportedHint"))}</p>`}
       <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.SaveRequired"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.saveEnabled">${booleanOptions(data.saveEnabled)}</select></div>
+        <label>${escapeHTML(localized("CTN.Trigger.SaveInitialState"))}</label>
+        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.saveEnabled">${configuredSaveOptions}</select></div>
+      </div>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Trigger.SaveCurrentState"))}</label>
+        <div class="form-fields"><span class="ctn-route-status ${data.saveState === TRIGGER_SAVE_STATES.ON ? "ok" : "warning"}">${escapeHTML(data.saveState === TRIGGER_SAVE_STATES.ON ? localized("CTN.Trigger.StateOn") : localized("CTN.Trigger.StateOff"))}</span></div>
       </div>
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.Trigger.Ability"))}</label>
@@ -208,6 +226,11 @@ function triggerConfigHTML(tile, data) {
         <label>${escapeHTML(localized("CTN.Trigger.DamageCondition"))}</label>
         <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.damageCondition">${damageConditions}</select></div>
       </div>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Trigger.PersistentHazardSave"))}</label>
+        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.disableSaveOnPersistentHazard">${persistentHazardSaveOptions}</select></div>
+      </div>
+      <p class="hint">${escapeHTML(localized("CTN.Trigger.PersistentHazardSaveHint"))}</p>
 
       <hr>
       <h4>${escapeHTML(localized("CTN.Trigger.Transition"))}</h4>
@@ -526,7 +549,8 @@ function wireTriggerConfig(container, tile) {
     if (!data) return;
     await tile.update({
       hidden: data.initialVisibility === TRIGGER_INITIAL_VISIBILITY.HIDDEN,
-      [`flags.${MODULE_ID}.trigger.state`]: "armed"
+      [`flags.${MODULE_ID}.trigger.state`]: "armed",
+      [`flags.${MODULE_ID}.trigger.saveState`]: data.saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF
     }, { ctnTriggerState: true });
   });
 

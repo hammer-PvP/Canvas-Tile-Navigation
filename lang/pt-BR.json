@@ -162,8 +162,8 @@
   "CTN.Trigger.AfterRearmEmpty": "Revelar e rearmar quando a área esvaziar",
   "CTN.Trigger.AfterRemainActive": "Continuar como armadilha ativa",
   "CTN.Trigger.ImageHint": "Use os controles nativos de Aparência do Tile para escolher a imagem da armadilha/área. O CTN controla o comportamento e o estado de revelação.",
-  "CTN.Trigger.SystemRuleUnsupportedHint": "Este sistema não possui adapter de regras CTN. A transição de Scene ainda funciona, mas salvaguardas e dano exigem o adapter D&D5e.",
-  "CTN.Trigger.SystemRuleUnsupported": "Esta ação de salvaguarda/dano exige um adapter de sistema compatível com o CTN.",
+  "CTN.Trigger.SystemRuleUnsupportedHint": "Este sistema não possui adapter de regras CTN para Salvaguardas ou aplicação nativa de dano. Os controles genéricos de dano do CTN continuam disponíveis quando aplicável.",
+  "CTN.Trigger.SystemRuleUnsupported": "A aplicação nativa de dano não está disponível para este sistema.",
   "CTN.Trigger.TokenLocked": "Este Token está pausado por um Trigger CTN. O GM precisa resolver ou liberá-lo.",
   "CTN.Trigger.EnteredArea": "entrou na área do Trigger.",
   "CTN.Trigger.MovementPaused": "O movimento do Token está pausado até o GM resolver o Trigger.",
@@ -198,5 +198,13 @@
   "CTN.Trigger.MultiplierDouble": "Dobrado ×2",
   "CTN.Trigger.AppliedMultiplier": "Multiplicador aplicado",
   "CTN.Trigger.ResolveTrigger": "Resolver Trigger",
-  "CTN.Notifications.AmbiguousTravelGroup": "Mais de um Group do D&D5e corresponde à Scene atual. O CTN não vai adivinhar qual grupo deve viajar."
+  "CTN.Notifications.AmbiguousTravelGroup": "Mais de um Group do D&D5e corresponde à Scene atual. O CTN não vai adivinhar qual grupo deve viajar.",
+  "CTN.Trigger.SaveInitialState": "Estado inicial da Salvaguarda",
+  "CTN.Trigger.SaveCurrentState": "Estado atual da Salvaguarda",
+  "CTN.Trigger.StateOn": "ON",
+  "CTN.Trigger.StateOff": "OFF",
+  "CTN.Trigger.PersistentHazardSave": "Salvaguarda da Área de Hazard",
+  "CTN.Trigger.PersistentHazardSaveOff": "Desligar Salvaguarda ao ativar",
+  "CTN.Trigger.PersistentHazardSaveKeep": "Manter estado atual da Salvaguarda",
+  "CTN.Trigger.PersistentHazardSaveHint": "Quando um Trigger vira uma área de dano persistente, o CTN pode mudar o estado da Salvaguarda para OFF. Ao rearmar, o estado inicial configurado é restaurado."
 }
