@@ -4,106 +4,98 @@
 
 > Preparation first, navigation instantly during play.
 
-## v1.1.3 — Arrival Areas + Stateful Trigger Tiles
+## v1.1.4 — Trigger Resolution & Arrival Sources
 
-### Arrival Areas
+This patch keeps the validated v1.1.3 Arrival Area behavior and focuses on live-test corrections to Trigger Tiles and Arrival diagnostics.
 
-Arrival placement now treats the **GM-drawn Tile footprint as the authority**.
+### Arrival Areas retained
 
-- Resize a One-Way Arrival or paired return Navigation Link to define exactly where arriving Tokens may be placed.
-- On square/hex grids CTN fills grid spaces whose centers are inside that footprint.
-- On gridless Scenes CTN builds compact pseudo-slots inside the Tile bounds.
-- CTN uses every free authorized slot before stacking.
-- Overflow stacks are balanced **inside the Arrival Area**; CTN never deliberately spills travellers outside the GM-defined area.
-- Existing unrelated Tokens are avoided while free Arrival positions exist.
-- Group Tokens use the same Arrival Area logic.
-- No Wall/pathfinding analysis is attempted: the GM defines the safe area explicitly.
+- The GM-drawn Tile footprint remains the authority for Token placement.
+- CTN fills authorized spaces first and stacks overflow inside the same Arrival Area.
+- CTN does not deliberately spill travellers outside the GM-defined area.
+- Horizontal, vertical, narrow, and irregular GM-authored Arrival footprints remain supported.
 
-This keeps cave entrances, corridors, stairs, and narrow landing areas predictable.
+### Arrival Sources
 
-### Trigger Tiles
+A One-Way Arrival is now a reusable destination rather than an exclusive one-route endpoint.
 
-Tiles controls now include **Create Trigger Tile**. A Trigger Tile can be a simple walk-over Scene transition, a hidden trap, a save-based hazard, a persistent damage area, or a re-arming trap.
+An Arrival can be referenced by multiple sources at the same time:
 
-The GM supplies the Tile image using Foundry's native Tile Appearance controls. CTN stores behavior in Tile flags.
+- Navigation Links;
+- Trigger Tiles.
 
-Trigger configuration includes:
+Arrival status becomes **In Use** when at least one CTN source points to it. Its configuration shows **Incoming Sources**, including whether each source is a Navigation Link or Trigger Tile. Multiple Navigation Links may share the same Arrival.
 
-- Initial visibility: hidden or visible.
-- Movement: continue or pause until the GM resolves the Trigger.
-- Optional D&D5e saving throw with ability + DC.
-- Zero or more damage components with formula + damage type.
-- Damage condition: always, failed save, successful save, or full on failure / half on success.
-- Optional Scene transition with a destination Arrival.
-- Transition condition: always, failed save, or successful save.
-- Reveal condition: never, on trigger, on failed save, or on successful save.
-- Post-trigger behavior: disable, remain visible, become direct transition, become persistent damage area, re-arm when empty, or remain an active trap.
+### GM-only Save adjudication
 
-### GM-only resolution cards
+Trigger Saves no longer roll automatically from the CTN card.
 
-A normal trap trigger creates a private GM Chat card. Depending on configuration it exposes only relevant actions:
+The private GM card shows the configured ability and DC, then exposes:
 
-- Roll Save
-- Roll Damage
-- Apply Damage
-- Move Token
-- Release Token
-- Ignore / Release
+- **PASS**
+- **NOT PASS**
 
-CTN does not silently apply damage. The GM chooses when to roll and when to apply it.
+The player may roll from their own sheet or by any other table method. The GM decides the result in CTN, and that decision unlocks the configured success/failure consequences.
 
-D&D5e save rolls use the live Actor. Damage is rolled per configured component and applied through the D&D5e Actor damage API so damage types remain distinct.
+### Native D&D5e damage application
 
-### Movement lock
+Damage remains GM-controlled:
 
-When **Pause Until GM Resolves** is enabled, CTN cancels the attempted movement at the first detected Trigger entry, places the Token at the Trigger edge/area, and marks it as CTN-locked. Further normal movement is rejected until the GM resolves or releases it.
+1. Roll Damage;
+2. choose **Half ×0.5**, **Normal ×1**, or **Double ×2**;
+3. Apply Damage.
 
-Tiles controls also include **Release Paused Tokens** as a recovery action.
+CTN sends typed damage components plus the selected multiplier through the D&D5e Actor damage API, allowing the game system to apply native resistance, vulnerability, immunity, and other damage calculations.
 
-### Stateful traps
+### Persistent Damage state corrected
 
-Trigger Tiles persist their state in Tile flags:
+`Reveal and Become Persistent Damage Area` now has its own post-trigger behavior.
 
-- Armed
-- Triggered
-- Revealed
-- Active Hazard
-- Disabled
+After the initial trap has been resolved and becomes an Active Hazard, later entries:
 
-Examples:
+- may pause movement according to the Tile setting;
+- do **not** repeat the initial Saving Throw;
+- go directly to Roll Damage / Apply Damage / Release.
 
-**Hidden pit:** hidden → save → failure → damage/transition → reveal → direct transition. Once revealed, later Tokens can simply step into the pit to use the configured transition.
+### Re-arm When Empty corrected
 
-**Retracting spikes:** hidden/armed → trigger → reveal + save/damage → re-arm when the last Token leaves → hidden/armed again.
+`Reveal and Re-arm When Empty` now recomputes actual Token occupancy from the Scene instead of relying on incremental in-memory tracking.
 
-**Persistent hazard:** first trigger reveals the Tile; later entries continue creating GM damage-resolution cards.
+Expected lifecycle:
 
-### Scene transitions from Triggers
+- hidden + armed;
+- Token enters → reveal + resolve;
+- Tile stays visible while any Token remains inside;
+- last Token exits → Tile returns to initial visibility and `ARMED` state;
+- next entry triggers the trap again.
 
-Trigger-driven movement reuses the safe individual transition infrastructure introduced in 1.1.2:
+`Ignore / Release` restores an initial trigger to its armed/initial-visibility state. Ignoring one activation of an already persistent damage area leaves the hazard active.
 
-- live Actor authority;
-- Prototype Token creation when needed;
-- existing destination Token reuse;
-- Arrival Area placement;
-- player Scene loading handshake;
-- source cleanup only after successful destination loading;
-- D&D5e Group-token destination protection.
+### Trigger after CTN arrival
 
-A Trigger only moves the Token/Actor that entered it. It never performs the GM collective-party commit behavior.
+Token creation/reposition performed internally by CTN still suppresses Trigger detection during document updates. After the CTN arrival is complete, CTN explicitly evaluates the final Token position.
 
-### System compatibility
+This allows workflows such as:
 
-Navigation, Arrival Areas, Trigger entry/reveal/state, movement locking, and pure Scene transitions remain system-agnostic.
+- hidden pit in Scene A;
+- failed Save → move to Bottom of Pit in Scene B;
+- Bottom of Pit overlaps another armed Trigger;
+- CTN creates a new GM Trigger event for the arrived Token.
 
-Save and typed-damage actions currently use the **D&D5e adapter**. On other systems, Trigger Tiles can still perform transition/state workflows without D&D5e rule automation.
+Manual Actor Directory drag-and-drop is unchanged and is not converted into a CTN arrival event.
 
-## Existing navigation behavior retained
+Revealed Direct Transition zones are intentionally not auto-chained by an arrival evaluation, preventing accidental automatic Scene-transition loops.
+
+### Existing behavior retained
 
 - Scene drag → Navigation Link.
-- Hold Shift after starting the drag to bypass CTN for Foundry/other modules.
+- Shift-drop bypass for Foundry/other modules.
 - GM normal gesture = collective commit.
 - GM Shift + gesture = preview only.
 - Player navigation = individual transition.
-- D&D5e Group Actor membership controls collective travel.
-- Route pairing, One-Way Arrival, Incoming Route, Route Manager, Check Routes, labels, diagnostics, and contextual hover help remain intact.
+- D&D5e Group Actor roster/materialization.
+- safe preload/canvas-ready lifecycle and source cleanup.
+- Arrival Areas and overflow stacking.
+- Route Manager / Check Routes.
+- movement pause/release recovery.
+- stateful Trigger Tile reveal, transition, persistent hazard, and re-arm modes.

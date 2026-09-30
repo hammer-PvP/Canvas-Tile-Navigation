@@ -2,6 +2,7 @@ export const MODULE_ID = "canvas-tile-navigation";
 export const SOCKET_NAME = `module.${MODULE_ID}`;
 export const HOVER_HOOK = `${MODULE_ID}.hover`;
 export const ROUTES_CHANGED_HOOK = `${MODULE_ID}.routesChanged`;
+export const ARRIVAL_MATERIALIZED_HOOK = `${MODULE_ID}.arrivalMaterialized`;
 
 export const FLAGS = Object.freeze({
   ROOT: "navigation",
@@ -40,7 +41,8 @@ export const ROUTE_STATUS = Object.freeze({
   UNLINKED: "unlinked",
   AMBIGUOUS: "ambiguous",
   BROKEN: "broken",
-  UNUSED_ARRIVAL: "unused-arrival"
+  UNUSED_ARRIVAL: "unused-arrival",
+  IN_USE: "in-use"
 });
 
 export const LABEL_DISPLAY = Object.freeze({

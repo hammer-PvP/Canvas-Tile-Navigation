@@ -1,4 +1,5 @@
 import {
+  ARRIVAL_MATERIALIZED_HOOK,
   MODULE_ID,
   SOCKET_NAME,
   TRIGGER_AFTER,
@@ -15,7 +16,6 @@ import { tileBounds, tokenBounds } from "./token-service.mjs";
 import {
   applyTriggerDamage,
   rollTriggerDamage,
-  rollTriggerSave,
   supportsTriggerRules
 } from "./trigger-adapter.mjs";
 
@@ -24,7 +24,6 @@ const SAMPLE_DIVISOR = 4;
 
 const localMovementLocks = new Set();
 const recentMovementTriggers = new Set();
-const insideTokens = new Map();
 const warnedLockedTokens = new Map();
 
 let armedPlacement = false;
@@ -153,6 +152,21 @@ function tokenCenterAt(token, position) {
 
 function tokenInsideTrigger(token, trigger, position = null) {
   return tileContainsPoint(trigger, tokenCenterAt(token, position));
+}
+
+function triggerOccupants(trigger) {
+  const scene = trigger?.parent;
+  if (!scene) return [];
+  return [...scene.tokens].filter((token) => tokenInsideTrigger(token, trigger));
+}
+
+async function rearmIfEmpty(trigger) {
+  const data = triggerData(trigger);
+  if (!data || data.afterTrigger !== TRIGGER_AFTER.REARM_WHEN_EMPTY) return false;
+  if ([TRIGGER_STATES.ARMED, TRIGGER_STATES.DISABLED].includes(data.state)) return false;
+  if (triggerOccupants(trigger).length) return false;
+  await hideAndRearm(trigger);
+  return true;
 }
 
 function movementWaypoints(movement) {
@@ -388,18 +402,21 @@ function renderResolutionCard(trigger, token, resolution) {
   const data = triggerData(trigger);
   const actor = actorOfToken(token);
   const components = getTriggerDamageComponents(data);
-  const saveRequired = Boolean(data?.saveEnabled && supportsTriggerRules());
+  const persistentHazard = resolution.mode === "persistent-damage";
+  const saveRequired = Boolean(!persistentHazard && data?.saveEnabled && supportsTriggerRules());
   const saveResolved = resolution.saveResult !== null;
-  const damageEligible = components.length && (!saveRequired || saveResolved) && conditionMatches(data.damageCondition, resolution);
-  const transitionEligible = Boolean(data.transitionSceneUuid && data.transitionArrivalUuid)
+  const damageEligible = Boolean(components.length) && (persistentHazard
+    || ((!saveRequired || saveResolved) && conditionMatches(data.damageCondition, resolution)));
+  const transitionEligible = !persistentHazard
+    && Boolean(data.transitionSceneUuid && data.transitionArrivalUuid)
     && (!saveRequired || saveResolved)
     && conditionMatches(data.transitionCondition, resolution);
   const locked = Boolean(triggerLockData(token)?.active);
 
-  const saveText = !saveRequired
+  const saveText = persistentHazard || !saveRequired
     ? game.i18n.localize("CTN.Trigger.NoSave")
     : saveResolved
-      ? `${String(data.saveAbility).toUpperCase()} DC ${Number(data.saveDC) || 10}: <strong>${resolution.saveTotal ?? "—"}</strong> — ${resolution.saveResult ? game.i18n.localize("CTN.Trigger.Success") : game.i18n.localize("CTN.Trigger.Failure")}`
+      ? `${String(data.saveAbility).toUpperCase()} DC ${Number(data.saveDC) || 10} — <strong>${resolution.saveResult ? game.i18n.localize("CTN.Trigger.Success") : game.i18n.localize("CTN.Trigger.Failure")}</strong>`
       : `${String(data.saveAbility).toUpperCase()} DC ${Number(data.saveDC) || 10}`;
 
   const damageText = components.length
@@ -407,16 +424,35 @@ function renderResolutionCard(trigger, token, resolution) {
     : game.i18n.localize("CTN.Trigger.NoDamage");
 
   const rolledText = resolution.damageRolls?.length
-    ? `<div class="ctn-trigger-card__result">${resolution.damageRolls.map((entry) => `${escapeHTML(entry.total)} ${escapeHTML(entry.type)}`).join(" + ")}${damageMultiplier(trigger, resolution) === 0.5 ? ` (${escapeHTML(game.i18n.localize("CTN.Trigger.HalfDamage"))})` : ""}</div>`
+    ? `<div class="ctn-trigger-card__result">${resolution.damageRolls.map((entry) => `${escapeHTML(entry.total)} ${escapeHTML(entry.type)}`).join(" + ")}</div>`
     : "";
 
+  const defaultMultiplier = Number.isFinite(Number(resolution.damageMultiplier))
+    ? Number(resolution.damageMultiplier)
+    : (data.damageCondition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS && resolution.saveResult === true ? 0.5 : 1);
+  const multiplierOptions = [
+    [0.5, game.i18n.localize("CTN.Trigger.MultiplierHalf")],
+    [1, game.i18n.localize("CTN.Trigger.MultiplierNormal")],
+    [2, game.i18n.localize("CTN.Trigger.MultiplierDouble")]
+  ].map(([value, label]) => `<option value="${value}"${value === defaultMultiplier ? " selected" : ""}>${escapeHTML(label)}</option>`).join("");
+
   const buttons = [];
-  if (saveRequired && !saveResolved) buttons.push(resolutionButton("roll-save", game.i18n.localize("CTN.Trigger.RollSave"), "fa-solid fa-dice-d20"));
+  if (saveRequired && !saveResolved) {
+    buttons.push(resolutionButton("save-pass", game.i18n.localize("CTN.Trigger.Pass"), "fa-solid fa-check"));
+    buttons.push(resolutionButton("save-fail", game.i18n.localize("CTN.Trigger.NotPass"), "fa-solid fa-xmark"));
+  }
   if (damageEligible && !resolution.damageRolls?.length) buttons.push(resolutionButton("roll-damage", game.i18n.localize("CTN.Trigger.RollDamage"), "fa-solid fa-dice"));
   if (damageEligible && resolution.damageRolls?.length && !resolution.damageApplied) buttons.push(resolutionButton("apply-damage", game.i18n.localize("CTN.Trigger.ApplyDamage"), "fa-solid fa-heart-crack"));
   if (transitionEligible && !resolution.transitionDone) buttons.push(resolutionButton("move-token", game.i18n.localize("CTN.Trigger.MoveToken"), "fa-solid fa-person-falling"));
   if (locked) buttons.push(resolutionButton("release-token", game.i18n.localize("CTN.Trigger.ReleaseToken"), "fa-solid fa-unlock"));
+  if (!locked && (!saveRequired || saveResolved)) buttons.push(resolutionButton("resolve-trigger", game.i18n.localize("CTN.Trigger.ResolveTrigger"), "fa-solid fa-check-double"));
   if (!resolution.resolved) buttons.push(resolutionButton("ignore-trigger", game.i18n.localize("CTN.Trigger.Ignore"), "fa-solid fa-forward"));
+
+  const multiplierControl = damageEligible && resolution.damageRolls?.length && !resolution.damageApplied
+    ? `<div class="ctn-trigger-card__multiplier"><label>${escapeHTML(game.i18n.localize("CTN.Trigger.DamageMultiplier"))}</label><select data-ctn-damage-multiplier>${multiplierOptions}</select></div>`
+    : resolution.damageApplied
+      ? `<div class="ctn-trigger-card__result">${escapeHTML(game.i18n.localize("CTN.Trigger.AppliedMultiplier"))}: ×${escapeHTML(resolution.damageMultiplier ?? defaultMultiplier)}</div>`
+      : "";
 
   return `
     <section class="ctn-trigger-card" data-ctn-trigger-resolution="${escapeHTML(resolution.id)}">
@@ -424,8 +460,8 @@ function renderResolutionCard(trigger, token, resolution) {
       <p><strong>${escapeHTML(actor?.name ?? token?.name ?? "Token")}</strong> ${escapeHTML(game.i18n.localize("CTN.Trigger.EnteredArea"))}</p>
       ${locked ? `<p class="ctn-trigger-card__paused"><i class="fa-solid fa-lock"></i> ${escapeHTML(game.i18n.localize("CTN.Trigger.MovementPaused"))}</p>` : ""}
       <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Save"))}:</strong> ${saveText}</div>
-      <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Damage"))}:</strong><br>${damageText}${rolledText}</div>
-      ${data.transitionSceneUuid ? `<div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Transition"))}:</strong> ${escapeHTML(resolveScene(data.transitionSceneUuid)?.name ?? "—")}</div>` : ""}
+      <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Damage"))}:</strong><br>${damageText}${rolledText}${multiplierControl}</div>
+      ${!persistentHazard && data.transitionSceneUuid ? `<div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Transition"))}:</strong> ${escapeHTML(resolveScene(data.transitionSceneUuid)?.name ?? "—")}</div>` : ""}
       ${resolution.resolved ? `<p class="ctn-trigger-card__resolved">${escapeHTML(game.i18n.localize("CTN.Trigger.Resolved"))}</p>` : `<div class="ctn-trigger-card__actions">${buttons.join("")}</div>`}
     </section>
   `;
@@ -441,9 +477,10 @@ async function updateResolutionMessage(message, resolution) {
   });
 }
 
-async function createResolutionMessage(trigger, token, requesterId) {
+async function createResolutionMessage(trigger, token, requesterId, { mode = "initial" } = {}) {
   const resolution = {
     id: foundry.utils.randomID(),
+    mode,
     triggerUuid: trigger.uuid,
     tokenUuid: token.uuid,
     requesterId,
@@ -451,6 +488,7 @@ async function createResolutionMessage(trigger, token, requesterId) {
     saveResult: null,
     saveTotal: null,
     damageRolls: [],
+    damageMultiplier: null,
     damageApplied: false,
     transitionDone: false,
     resolved: false
@@ -486,12 +524,10 @@ async function finalizeTriggerBehavior(trigger, resolution) {
     case TRIGGER_AFTER.PERSISTENT_DAMAGE:
       await revealTrigger(trigger, TRIGGER_STATES.ACTIVE_HAZARD);
       break;
-    case TRIGGER_AFTER.REARM_WHEN_EMPTY: {
+    case TRIGGER_AFTER.REARM_WHEN_EMPTY:
       await revealTrigger(trigger, TRIGGER_STATES.TRIGGERED);
-      const occupants = insideTokens.get(trigger.uuid) ?? new Set();
-      if (!occupants.size) await hideAndRearm(trigger);
+      await rearmIfEmpty(trigger);
       break;
-    }
     case TRIGGER_AFTER.REMAIN_ACTIVE_TRAP:
     default:
       await trigger.update({ [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.ARMED }, { ctnTriggerState: true });
@@ -504,11 +540,13 @@ async function releaseResolutionToken(trigger, token, resolution) {
   emitReleaseToUser(resolution.requesterId, token.uuid);
   if (!resolution.resolved) {
     resolution.resolved = true;
-    await finalizeTriggerBehavior(trigger, resolution);
+    if (resolution.mode !== "persistent-damage") {
+      await finalizeTriggerBehavior(trigger, resolution);
+    }
   }
 }
 
-async function handleResolutionAction(message, action) {
+async function handleResolutionAction(message, action, button = null) {
   if (!game.user?.isGM) return;
   const resolution = resolutionFromMessage(message);
   if (!resolution) return;
@@ -519,18 +557,9 @@ async function handleResolutionAction(message, action) {
   const data = triggerData(trigger);
   if (!trigger || !token || !actor || !data) return;
 
-  if (action === "roll-save") {
-    const result = await rollTriggerSave(actor, {
-      ability: data.saveAbility,
-      dc: data.saveDC,
-      flavor: `${triggerTitle(trigger, data)} — DC ${Number(data.saveDC) || 10}`
-    });
-    if (!result.supported || result.total === null) {
-      ui.notifications.warn(game.i18n.localize("CTN.Trigger.SystemRuleUnsupported"));
-      return;
-    }
-    resolution.saveTotal = result.total;
-    resolution.saveResult = result.success;
+  if (action === "save-pass" || action === "save-fail") {
+    resolution.saveResult = action === "save-pass";
+    resolution.saveTotal = null;
     await applyRevealForPhase(trigger, resolution, "save");
     await updateResolutionMessage(message, resolution);
     return;
@@ -545,8 +574,13 @@ async function handleResolutionAction(message, action) {
   }
 
   if (action === "apply-damage") {
+    const selector = button?.closest?.(".ctn-trigger-card")?.querySelector?.("[data-ctn-damage-multiplier]");
+    const selected = Number(selector?.value);
+    resolution.damageMultiplier = [0.5, 1, 2].includes(selected)
+      ? selected
+      : damageMultiplier(trigger, resolution);
     const applied = await applyTriggerDamage(actor, resolution.damageRolls, {
-      multiplier: damageMultiplier(trigger, resolution)
+      multiplier: resolution.damageMultiplier
     });
     if (applied) resolution.damageApplied = true;
     else ui.notifications.warn(game.i18n.localize("CTN.Trigger.SystemRuleUnsupported"));
@@ -584,10 +618,22 @@ async function handleResolutionAction(message, action) {
     return;
   }
 
+  if (action === "resolve-trigger") {
+    resolution.resolved = true;
+    if (resolution.mode !== "persistent-damage") {
+      await finalizeTriggerBehavior(trigger, resolution);
+    }
+    await updateResolutionMessage(message, resolution);
+    return;
+  }
+
   if (action === "ignore-trigger") {
     await clearTokenLock(token);
     emitReleaseToUser(resolution.requesterId, token.uuid);
     resolution.resolved = true;
+    if (resolution.mode !== "persistent-damage") {
+      await hideAndRearm(trigger);
+    }
     await updateResolutionMessage(message, resolution);
   }
 }
@@ -628,7 +674,14 @@ async function handleTriggerEnter(message) {
     return;
   }
 
-  const { message: chatMessage, resolution } = await createResolutionMessage(trigger, token, message.requesterId);
+  const isPersistentHazard = data.state === TRIGGER_STATES.ACTIVE_HAZARD
+    && data.afterTrigger === TRIGGER_AFTER.PERSISTENT_DAMAGE;
+  const { message: chatMessage, resolution } = await createResolutionMessage(
+    trigger,
+    token,
+    message.requesterId,
+    { mode: isPersistentHazard ? "persistent-damage" : "initial" }
+  );
   if (message.paused) {
     await setTokenLock(token, {
       triggerUuid: trigger.uuid,
@@ -637,36 +690,36 @@ async function handleTriggerEnter(message) {
     });
   }
 
-  await trigger.update({ [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED }, { ctnTriggerState: true });
-  await applyRevealForPhase(trigger, resolution, "trigger");
+  if (!isPersistentHazard) {
+    await trigger.update({ [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED }, { ctnTriggerState: true });
+    await applyRevealForPhase(trigger, resolution, "trigger");
+  }
   await updateResolutionMessage(chatMessage, resolution);
 }
 
-function updateInsideTracking(token) {
-  if (!isPrimaryGM() || !token?.parent) return;
-  for (const trigger of triggerTiles(token.parent)) {
-    const set = insideTokens.get(trigger.uuid) ?? new Set();
-    const inside = tokenInsideTrigger(token, trigger);
-    if (inside) set.add(token.uuid);
-    else set.delete(token.uuid);
-    insideTokens.set(trigger.uuid, set);
-
+function checkRearmState(scene) {
+  if (!isPrimaryGM() || !scene) return;
+  for (const trigger of triggerTiles(scene)) {
     const data = triggerData(trigger);
-    if (!inside && !set.size && data?.afterTrigger === TRIGGER_AFTER.REARM_WHEN_EMPTY
-        && data.state !== TRIGGER_STATES.ARMED && data.state !== TRIGGER_STATES.DISABLED) {
-      void hideAndRearm(trigger);
-    }
+    if (data?.afterTrigger !== TRIGGER_AFTER.REARM_WHEN_EMPTY) continue;
+    if ([TRIGGER_STATES.ARMED, TRIGGER_STATES.DISABLED].includes(data.state)) continue;
+    void rearmIfEmpty(trigger);
   }
 }
 
 function onMoveToken(token) {
-  updateInsideTracking(token);
+  checkRearmState(token?.parent);
 }
 
 function onUpdateToken(token, changes) {
   if (!triggerLockData(token)?.active) localMovementLocks.delete(token.uuid);
-  if (changes?.x !== undefined || changes?.y !== undefined) updateInsideTracking(token);
+  if (changes?.x !== undefined || changes?.y !== undefined) checkRearmState(token?.parent);
 }
+
+function onDeleteToken(token) {
+  checkRearmState(token?.parent);
+}
+
 
 async function handleSocketMessage(message) {
   if (!message?.type) return;
@@ -685,7 +738,7 @@ function onRenderChatMessage(message, html) {
   const resolution = message.getFlag(MODULE_ID, "triggerResolution");
   if (!resolution) return;
   html.querySelectorAll("[data-ctn-trigger-action]").forEach((button) => {
-    button.addEventListener("click", () => void handleResolutionAction(message, button.dataset.ctnTriggerAction));
+    button.addEventListener("click", () => void handleResolutionAction(message, button.dataset.ctnTriggerAction, button));
   });
 }
 
@@ -769,10 +822,51 @@ export async function releaseAllPausedTokens() {
   ui.notifications.info(game.i18n.format("CTN.Trigger.ReleasedCount", { count }));
 }
 
+function requesterIdForToken(token) {
+  const actorId = actorOfToken(token)?.id;
+  return [...game.users].find((user) => !user.isGM && user.character?.id === actorId)?.id ?? game.user.id;
+}
+
+async function handleArrivalMaterialized({ tokenUuids = [] } = {}) {
+  if (!isPrimaryGM()) return;
+
+  for (const uuid of tokenUuids) {
+    const token = resolveToken(uuid);
+    if (!token?.parent || triggerLockData(token)?.active) continue;
+
+    const trigger = triggerTiles(token.parent)
+      .filter(triggerCanFire)
+      .filter((candidate) => {
+        const data = triggerData(candidate);
+        return !(data?.state === TRIGGER_STATES.REVEALED
+          && data?.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION);
+      })
+      .filter((candidate) => tokenInsideTrigger(token, candidate))
+      .sort((a, b) => (Number(b.sort) || 0) - (Number(a.sort) || 0))[0];
+    if (!trigger) continue;
+
+    const data = triggerData(trigger);
+    const isDirect = data.state === TRIGGER_STATES.REVEALED
+      && data.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION;
+    const shouldPause = !isDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
+    await handleTriggerEnter({
+      type: "trigger-enter",
+      requesterId: requesterIdForToken(token),
+      tokenUuid: token.uuid,
+      triggerUuid: trigger.uuid,
+      movementId: "ctn-arrival",
+      entryPosition: { x: token.x, y: token.y },
+      paused: shouldPause
+    });
+  }
+}
+
 export function registerTriggerHooks() {
   Hooks.on("preMoveToken", onPreMoveToken);
   Hooks.on("moveToken", onMoveToken);
   Hooks.on("updateToken", onUpdateToken);
+  Hooks.on("deleteToken", onDeleteToken);
+  Hooks.on(ARRIVAL_MATERIALIZED_HOOK, (payload) => void handleArrivalMaterialized(payload));
   Hooks.on("renderChatMessageHTML", onRenderChatMessage);
   Hooks.on("canvasTearDown", disarmTriggerPlacement);
 }

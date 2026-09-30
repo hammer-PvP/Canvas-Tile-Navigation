@@ -1,37 +1,36 @@
-# Canvas Tile Navigation 1.1.3
+# Canvas Tile Navigation 1.1.4
 
-## Arrival Areas
-- Replaced radial/ring Token placement with GM-authored Arrival Areas.
-- The Arrival/return Tile footprint defines the only authorized placement area.
-- Grid slots inside the footprint are used before any stack occurs.
-- Overflow stacks remain inside the Arrival Area.
-- Existing unrelated Tokens are avoided while free authorized positions exist.
-- Group Token placement uses the same rules.
+## Trigger Save UX
+- Replaced CTN Roll Save with GM-only `PASS` / `NOT PASS` adjudication.
+- The card still shows the configured Save ability and DC.
+- Player rolls are no longer coupled to CTN Chat state.
 
-## Trigger Tiles
-- Added Tiles → Create Trigger Tile.
-- Trigger Tiles support On Enter behavior, initial hidden/visible state, optional movement lock, D&D5e save, multiple typed damage components, optional Scene transition, reveal conditions, and persistent post-trigger state.
-- Added reset/re-arm control in Trigger Tile configuration.
-- The GM selects the trap/hazard image using native Tile Appearance controls.
+## Damage application
+- Added Half ×0.5 / Normal ×1 / Double ×2 selection after damage is rolled.
+- Typed damage continues to be rolled component-by-component.
+- Apply Damage uses the native D&D5e Actor damage API with the chosen multiplier so system resistance/vulnerability/immunity logic remains authoritative.
 
-## GM resolution
-- Trigger resolution is sent as GM-only Chat.
-- Save/damage are not silently applied.
-- Buttons are exposed contextually for Roll Save, Roll Damage, Apply Damage, Move Token, Release Token, and Ignore/Release.
-- D&D5e saves use `Actor.rollSavingThrow`; typed damage application uses the live Actor damage API.
+## Persistent Damage
+- Fixed Active Hazard re-entry inheriting the initial Saving Throw.
+- Revealed Persistent Damage areas now go directly to damage resolution on subsequent entries.
 
-## Movement protection
-- Pause Until GM Resolves prevents players from running through an unresolved Trigger.
-- A CTN Token lock rejects additional normal movement until release.
-- Added Tiles → Release Paused Tokens recovery action.
-- CTN internal arrival/transfer movements suppress Trigger activation.
+## Re-arm When Empty
+- Reworked empty-area detection to scan actual Scene Tokens.
+- The Tile stays revealed while any Token remains inside.
+- When the final Token exits or is removed, initial visibility is restored and state returns to Armed.
+- Ignore / Release of an initial event restores the initial Armed state.
 
-## Stateful traps
-- Persistent states: Armed, Triggered, Revealed, Active Hazard, Disabled.
-- After-trigger modes: Disable, Remain Visible, Direct Transition, Persistent Damage, Re-arm When Empty, Remain Active Trap.
-- Re-arm When Empty can hide the Tile again once the last Token leaves.
-- Revealed Direct Transition areas automatically use the configured Scene/Arrival on later entry.
+## Arrival Sources
+- Arrival usage now considers both Navigation Links and Trigger Tiles.
+- Added `In Use` Arrival status.
+- Arrival configuration lists all Incoming Sources and identifies Trigger Tile vs Navigation Link.
+- Multiple Navigation Links may share one Arrival; linking one no longer evicts another source.
 
-## Transition reuse
-- Trigger transitions reuse the safe 1.1.2 individual Actor transfer and canvas-ready cleanup lifecycle.
-- A Trigger moves only the Actor that entered it; it never pulls the whole party.
+## Trigger on CTN Arrival
+- CTN now explicitly evaluates an arrived Token against Trigger Tiles after safe materialization.
+- Supports falling/teleporting onto a second armed trap or active hazard.
+- Manual Actor Directory drag/drop remains outside this CTN arrival evaluation.
+- Revealed Direct Transition areas are excluded from automatic arrival chaining to avoid transition loops.
+
+## Arrival Area
+- No placement redesign in this patch: the GM-drawn footprint behavior validated in 1.1.3 remains intact.

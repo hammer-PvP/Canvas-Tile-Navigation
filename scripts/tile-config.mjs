@@ -22,8 +22,8 @@ import {
   clearArrivalAssignment,
   getArrivalPointsForScene,
   getDisplayLabel,
-  getIncomingLinkForArrival,
   getIncomingRouteCandidates,
+  getIncomingSourcesForArrival,
   getReverseCandidates,
   getRouteStatus,
   isArrivalPoint,
@@ -245,16 +245,25 @@ function triggerConfigHTML(tile, data) {
 }
 
 function arrivalConfigHTML(tile, nav) {
-  const incoming = getIncomingLinkForArrival(tile);
+  const sources = getIncomingSourcesForArrival(tile);
   const candidates = getIncomingRouteCandidates(tile);
   const incomingOptions = [
-    `<option value="">${escapeHTML(localized("CTN.TileConfig.NoIncomingRoute"))}</option>`,
+    `<option value="">${escapeHTML(localized("CTN.TileConfig.AddIncomingRoute"))}</option>`,
     ...candidates.map((link) => option(
       link.uuid,
       `${link.parent?.name ?? ""} → ${getDisplayLabel(link)}`,
-      incoming?.uuid ?? ""
+      ""
     ))
   ].join("");
+
+  const sourcesHTML = sources.length
+    ? `<div class="ctn-incoming-sources">${sources.map((source) => {
+        const typeKey = source.type === "trigger"
+          ? "CTN.TileConfig.SourceTrigger"
+          : "CTN.TileConfig.SourceNavigation";
+        return `<div><strong>${escapeHTML(localized(typeKey))}:</strong> ${escapeHTML(source.sourceScene)} — ${escapeHTML(source.label)}</div>`;
+      }).join("")}</div>`
+    : `<span class="hint">${escapeHTML(localized("CTN.TileConfig.NoIncomingSources"))}</span>`;
 
   return `
     <fieldset class="ctn-config" data-ctn-arrival-config>
@@ -264,7 +273,11 @@ function arrivalConfigHTML(tile, nav) {
         <div class="form-fields"><span>${escapeHTML(localized("CTN.TileConfig.OneWayArrivalPoint"))}</span></div>
       </div>
       <div class="form-group">
-        <label>${escapeHTML(localized("CTN.TileConfig.IncomingRoute"))}</label>
+        <label>${escapeHTML(localized("CTN.TileConfig.IncomingSources"))}</label>
+        <div class="form-fields">${sourcesHTML}</div>
+      </div>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.TileConfig.AddIncomingRouteLabel"))}</label>
         <div class="form-fields">
           <select data-ctn-incoming-route>${incomingOptions}</select>
         </div>
@@ -497,12 +510,9 @@ function wireIncomingRoute(container, arrivalTile) {
 
   select.addEventListener("change", async () => {
     const link = resolveTile(select.value);
-    if (!link) {
-      await clearArrivalAssignment(arrivalTile);
-      return;
-    }
-
+    if (!link) return;
     await setOneWay(link, arrivalTile);
+    select.value = "";
   });
 }
 

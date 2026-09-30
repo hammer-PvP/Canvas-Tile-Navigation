@@ -22,34 +22,6 @@ function gmIds() {
   return [...game.users].filter((user) => user.isGM).map((user) => user.id);
 }
 
-export async function rollTriggerSave(actor, { ability = "dex", dc = 10, flavor = "" } = {}) {
-  if (!supportsTriggerRules() || !actor || typeof actor.rollSavingThrow !== "function") {
-    return { supported: false, total: null, success: null, rolls: [] };
-  }
-
-  const rolls = await actor.rollSavingThrow(
-    { ability, target: Number(dc) || 10 },
-    {},
-    {
-      create: true,
-      data: {
-        flavor,
-        speaker: ChatMessage.getSpeaker({ actor }),
-        whisper: gmIds()
-      }
-    }
-  );
-
-  const list = Array.isArray(rolls) ? rolls : rolls ? [rolls] : [];
-  const total = list.length ? Number(list[0]?.total) : NaN;
-  return {
-    supported: true,
-    total: Number.isFinite(total) ? total : null,
-    success: Number.isFinite(total) ? total >= (Number(dc) || 10) : null,
-    rolls: list
-  };
-}
-
 export async function rollTriggerDamage(actor, components, { flavor = "" } = {}) {
   const rollData = actor?.getRollData?.({ roll: true }) ?? actor?.getRollData?.() ?? {};
   const results = [];

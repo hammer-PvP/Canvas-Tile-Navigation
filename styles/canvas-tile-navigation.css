@@ -240,3 +240,22 @@
 .ctn-trigger-card__actions button {
   min-width: 0;
 }
+
+.ctn-incoming-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.ctn-trigger-card__multiplier {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.ctn-trigger-card__multiplier select {
+  flex: 1 1 auto;
+  min-width: 0;
+}

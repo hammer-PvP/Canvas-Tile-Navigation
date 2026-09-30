@@ -1,4 +1,5 @@
 import {
+  ARRIVAL_MATERIALIZED_HOOK,
   MODULE_ID,
   SOCKET_NAME,
   TRIGGER_PERMISSION
@@ -98,6 +99,12 @@ function waitForCanvasReady(sceneId, { timeout = TRANSITION_TIMEOUT_MS } = {}) {
   });
 }
 
+function emitArrivalMaterialized(tokens, { reason = "navigation" } = {}) {
+  const tokenUuids = (tokens ?? []).map((token) => token?.uuid).filter(Boolean);
+  if (!tokenUuids.length) return;
+  Hooks.callAll(ARRIVAL_MATERIALIZED_HOOK, { tokenUuids, reason });
+}
+
 async function performGMPreview(targetScene) {
   if (!canvas?.ready) {
     notify("CTN.Notifications.NavigationLoading");
@@ -116,6 +123,7 @@ async function prepareCollectiveDestination({ sourceScene, targetScene, arrivalT
   const result = {
     roster,
     successfulActorIds: new Set(),
+    tokens: [],
     representation: "none"
   };
 
@@ -126,6 +134,7 @@ async function prepareCollectiveDestination({ sourceScene, targetScene, arrivalT
     result.representation = "group";
     const moved = await repositionExistingTokenAtArrival(groupToken, targetScene, arrivalTile);
     if (moved) {
+      result.tokens = [groupToken];
       for (const actor of roster.actors) result.successfulActorIds.add(actor.id);
     }
     return result;
@@ -134,6 +143,7 @@ async function prepareCollectiveDestination({ sourceScene, targetScene, arrivalT
   result.representation = "characters";
   const placement = await reconcileActorsAtArrival(roster.actors, targetScene, arrivalTile);
   result.successfulActorIds = placement.successfulActorIds;
+  result.tokens = placement.tokens;
   return result;
 }
 
@@ -182,6 +192,7 @@ async function performGMCommit({ tileDocument, targetScene }) {
     }
 
     await ready;
+    emitArrivalMaterialized(destination.tokens, { reason: "gm-navigation" });
 
     // Source cleanup is intentionally delayed until destination materialization
     // and the GM's target Canvas have both succeeded.
@@ -272,10 +283,12 @@ async function preparePlayerTransition({ tileDocument, requesterId, transitionId
     const arrivalTile = destinationArrivalTile(tileDocument);
     const groupRepresentation = await getGroupRepresentationForActorAsync(targetScene, actor);
     let cleanupSource = false;
+    let targetTokenUuids = [];
 
     if (!groupRepresentation && arrivalTile) {
       const placement = await reconcileActorsAtArrival([actor], targetScene, arrivalTile);
       cleanupSource = placement.successfulActorIds.has(actor.id);
+      targetTokenUuids = placement.tokens.map((token) => token.uuid);
       if (!cleanupSource) {
         emitToUser("player-transition-failed", requesterId, { transitionId, reason: "CTN.Notifications.TokenTransferFailed" });
         authorityPlayerLocks.delete(requesterId);
@@ -305,6 +318,7 @@ async function preparePlayerTransition({ tileDocument, requesterId, transitionId
       targetSceneId: targetScene.id,
       actorId: actor.id,
       cleanupSource,
+      targetTokenUuids,
       timer
     });
 
@@ -329,6 +343,11 @@ async function finalizePlayerTransition(message) {
   authorityPlayerLocks.delete(pending.requesterId);
 
   try {
+    emitArrivalMaterialized(
+      pending.targetTokenUuids.map((uuid) => { try { return fromUuidSync(uuid); } catch (_error) { return null; } }).filter((token) => token?.documentName === "Token"),
+      { reason: "player-navigation" }
+    );
+
     if (pending.cleanupSource) {
       const sourceScene = game.scenes.get(pending.sourceSceneId);
       if (sourceScene) {
@@ -508,10 +527,12 @@ export async function requestTriggeredActorTransition({ sourceToken, targetScene
 
     const groupRepresentation = await getGroupRepresentationForActorAsync(targetScene, actor);
     let cleanupSource = false;
+    let targetTokenUuids = [];
 
     if (!groupRepresentation) {
       const placement = await reconcileActorsAtArrival([actor], targetScene, arrivalTile);
       cleanupSource = placement.successfulActorIds.has(actor.id);
+      targetTokenUuids = placement.tokens.map((token) => token.uuid);
       if (!cleanupSource) return false;
     }
 
@@ -520,6 +541,10 @@ export async function requestTriggeredActorTransition({ sourceToken, targetScene
     if (groupRepresentation) cleanupSource = false;
 
     if (!requester) {
+      emitArrivalMaterialized(
+        targetTokenUuids.map((uuid) => { try { return fromUuidSync(uuid); } catch (_error) { return null; } }).filter((token) => token?.documentName === "Token"),
+        { reason: "trigger-transition" }
+      );
       if (cleanupSource && sourceScene) {
         await deleteActorTokensFromScene(sourceScene, new Set([actor.id]));
       }
@@ -547,6 +572,7 @@ export async function requestTriggeredActorTransition({ sourceToken, targetScene
       targetSceneId: targetScene.id,
       actorId: actor.id,
       cleanupSource,
+      targetTokenUuids,
       timer
     });
 

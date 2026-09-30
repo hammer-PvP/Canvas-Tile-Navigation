@@ -163,8 +163,8 @@ function renderNow() {
     } else if (game.user?.isGM && isArrivalPoint(tile)) {
       const diagnostic = document.createElement("div");
       diagnostic.className = `ctn-canvas-label__status ${statusClass(status)}`;
-      diagnostic.textContent = status === ROUTE_STATUS.ONE_WAY
-        ? game.i18n.localize("CTN.Arrival.LinkedBadge")
+      diagnostic.textContent = [ROUTE_STATUS.ONE_WAY, ROUTE_STATUS.IN_USE].includes(status)
+        ? statusLabel(status).toUpperCase()
         : `⚠ ${statusLabel(status).toUpperCase()}`;
       label.append(diagnostic);
     }

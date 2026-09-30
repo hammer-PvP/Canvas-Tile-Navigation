@@ -129,28 +129,67 @@ export function getArrivalPointsForScene(sceneOrUuid) {
   return [...scene.tiles].filter(isArrivalPoint);
 }
 
-export function getIncomingLinkForArrival(arrival) {
-  if (!arrival || !isArrivalPoint(arrival)) return null;
-  return allLinks().find((link) => {
+export function getIncomingLinksForArrival(arrival) {
+  if (!arrival || !isArrivalPoint(arrival)) return [];
+  return allLinks().filter((link) => {
     const nav = navData(link);
     return nav?.routeMode === ROUTE_MODES.ONE_WAY
       && nav?.oneWayArrivalUuid === arrival.uuid;
-  }) ?? null;
+  });
+}
+
+export function getIncomingLinkForArrival(arrival) {
+  return getIncomingLinksForArrival(arrival)[0] ?? null;
+}
+
+function triggerFlag(tile) {
+  const data = tile?.getFlag?.(MODULE_ID, "trigger");
+  return data?.enabled ? data : null;
+}
+
+export function getIncomingSourcesForArrival(arrival) {
+  if (!arrival || !isArrivalPoint(arrival)) return [];
+
+  const sources = getIncomingLinksForArrival(arrival).map((link) => ({
+    type: "navigation",
+    uuid: link.uuid,
+    sourceScene: link.parent?.name ?? "",
+    label: getDisplayLabel(link)
+  }));
+
+  for (const scene of game.scenes) {
+    for (const tile of scene.tiles) {
+      const trigger = triggerFlag(tile);
+      if (!trigger) continue;
+      if (trigger.transitionArrivalUuid !== arrival.uuid) continue;
+      if (trigger.transitionSceneUuid && trigger.transitionSceneUuid !== arrival.parent?.uuid) continue;
+      sources.push({
+        type: "trigger",
+        uuid: tile.uuid,
+        sourceScene: scene.name ?? "",
+        label: String(trigger.label || tile.name || game.i18n.localize("CTN.Trigger.DefaultName"))
+      });
+    }
+  }
+
+  return sources.sort((a, b) => {
+    return a.sourceScene.localeCompare(b.sourceScene)
+      || a.type.localeCompare(b.type)
+      || a.label.localeCompare(b.label);
+  });
 }
 
 export function getIncomingRouteCandidates(arrival) {
   if (!arrival || !isArrivalPoint(arrival) || !arrival.parent) return [];
-  const current = getIncomingLinkForArrival(arrival);
+  const alreadyLinked = new Set(getIncomingLinksForArrival(arrival).map((link) => link.uuid));
 
   return allLinks()
     .filter((link) => {
       const nav = navData(link);
       if (nav?.targetSceneUuid !== arrival.parent.uuid) return false;
-      if (current?.uuid === link.uuid) return true;
-
+      if (alreadyLinked.has(link.uuid)) return false;
       const status = getRouteStatus(link);
-      if ([ROUTE_STATUS.LINKED, ROUTE_STATUS.ONE_WAY].includes(status)) return false;
-      return true;
+      return ![ROUTE_STATUS.LINKED, ROUTE_STATUS.ONE_WAY].includes(status);
     })
     .sort((a, b) => {
       const sa = a.parent?.name ?? "";
@@ -172,12 +211,9 @@ export function getRouteStatus(tile) {
   if (!nav?.enabled) return null;
 
   if (isArrivalPoint(tile)) {
-    const used = allLinks().some((link) => {
-      const lNav = navData(link);
-      return lNav?.routeMode === ROUTE_MODES.ONE_WAY
-        && lNav?.oneWayArrivalUuid === tile.uuid;
-    });
-    return used ? ROUTE_STATUS.ONE_WAY : ROUTE_STATUS.UNUSED_ARRIVAL;
+    return getIncomingSourcesForArrival(tile).length
+      ? ROUTE_STATUS.IN_USE
+      : ROUTE_STATUS.UNUSED_ARRIVAL;
   }
 
   const target = resolveScene(nav.targetSceneUuid);
@@ -214,7 +250,8 @@ export function statusLabel(status) {
     [ROUTE_STATUS.UNLINKED]: "Unlinked",
     [ROUTE_STATUS.AMBIGUOUS]: "Ambiguous",
     [ROUTE_STATUS.BROKEN]: "Broken",
-    [ROUTE_STATUS.UNUSED_ARRIVAL]: "UnusedArrival"
+    [ROUTE_STATUS.UNUSED_ARRIVAL]: "UnusedArrival",
+    [ROUTE_STATUS.IN_USE]: "InUse"
   }[status];
   return key ? game.i18n.localize(`CTN.RouteStatus.${key}`) : "";
 }
@@ -324,13 +361,6 @@ export async function setOneWay(link, arrival) {
     return false;
   }
 
-  // One Arrival Point belongs to one incoming route. Reassigning it releases
-  // the previous route instead of storing two competing authorities.
-  const occupying = getIncomingLinkForArrival(arrival);
-  if (occupying && occupying.uuid !== link.uuid) {
-    await clearRouteResolution(occupying);
-  }
-
   const oldPair = resolveTile(navData(link)?.pairedReturnLinkUuid);
   if (oldPair && navData(oldPair)?.pairedReturnLinkUuid === link.uuid) {
     await updateTileFlags(oldPair, { pairedReturnLinkUuid: "" });
@@ -348,9 +378,9 @@ export async function setOneWay(link, arrival) {
 
 export async function clearArrivalAssignment(arrival) {
   if (!game.user?.isGM || !arrival || !isArrivalPoint(arrival)) return;
-  const incoming = getIncomingLinkForArrival(arrival);
-  if (!incoming) return;
-  await clearRouteResolution(incoming);
+  for (const incoming of getIncomingLinksForArrival(arrival)) {
+    await clearRouteResolution(incoming);
+  }
 }
 
 export async function clearRouteResolution(link) {

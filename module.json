@@ -2,7 +2,7 @@
   "id": "canvas-tile-navigation",
   "title": "Canvas Tile Navigation",
   "description": "System-agnostic visual Scene navigation and lightweight map Trigger Tiles for Foundry VTT. Drag Scenes onto the Canvas, define safe Arrival Areas, and configure simple transitions, saves, damage, and stateful traps.",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "authors": [
     {
       "name": "hammer-PvP",
@@ -34,5 +34,5 @@
   "socket": true,
   "url": "https://github.com/hammer-PvP/Canvas-Tile-Navigation",
   "manifest": "https://github.com/hammer-PvP/Canvas-Tile-Navigation/releases/latest/download/module.json",
-  "download": "https://github.com/hammer-PvP/Canvas-Tile-Navigation/releases/download/v1.1.3/canvas-tile-navigation.zip"
+  "download": "https://github.com/hammer-PvP/Canvas-Tile-Navigation/releases/download/v1.1.4/canvas-tile-navigation.zip"
 }
