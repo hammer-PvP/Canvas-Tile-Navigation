@@ -1,97 +1,109 @@
 # Canvas Tile Navigation
 
-**Canvas Tile Navigation** is a system-agnostic Foundry VTT V14 module for visual Scene navigation directly on the Canvas.
+**Canvas Tile Navigation (CTN)** is a Foundry VTT V14 module for fast visual Scene navigation, safe Token arrival, and deliberately small map-trigger workflows.
 
 > Preparation first, navigation instantly during play.
 
-## 1.1.2 — Party-aware Scene transitions
+## v1.1.3 — Arrival Areas + Stateful Trigger Tiles
 
-This patch replaces the first token-transfer experiment with a lifecycle-safe destination reconciliation model.
+### Arrival Areas
 
-### GM commit lifecycle
+Arrival placement now treats the **GM-drawn Tile footprint as the authority**.
 
-A normal GM navigation gesture now runs as a guarded transition:
+- Resize a One-Way Arrival or paired return Navigation Link to define exactly where arriving Tokens may be placed.
+- On square/hex grids CTN fills grid spaces whose centers are inside that footprint.
+- On gridless Scenes CTN builds compact pseudo-slots inside the Tile bounds.
+- CTN uses every free authorized slot before stacking.
+- Overflow stacks are balanced **inside the Arrival Area**; CTN never deliberately spills travellers outside the GM-defined area.
+- Existing unrelated Tokens are avoided while free Arrival positions exist.
+- Group Tokens use the same Arrival Area logic.
+- No Wall/pathfinding analysis is attempted: the GM defines the safe area explicitly.
 
-1. lock CTN navigation;
-2. resolve the travelling party / destination representation;
-3. preload the destination Scene and broadcast the preload to connected clients;
-4. create or reposition destination TokenDocuments while the Scene is still inactive;
-5. activate the destination Scene once, without a second `view()` call;
-6. wait for `canvasReady` for that exact Scene;
-7. remove only successfully transferred character Tokens from the source Scene;
-8. pull the participating players;
-9. release the navigation lock.
+This keeps cave entrances, corridors, stairs, and narrow landing areas predictable.
 
-A 30-second timeout is a safety fallback only. Source Tokens are retained when the transition does not finish.
+### Trigger Tiles
 
-### GM preview
+Tiles controls now include **Create Trigger Tile**. A Trigger Tile can be a simple walk-over Scene transition, a hidden trap, a save-based hazard, a persistent damage area, or a re-arming trap.
 
-GM Shift + configured gesture remains preview-only:
+The GM supplies the Tile image using Foundry's native Tile Appearance controls. CTN stores behavior in Tile flags.
 
-- no Active Scene change;
-- no Token transfer;
-- no player pull.
+Trigger configuration includes:
 
-### Destination reconciliation
+- Initial visibility: hidden or visible.
+- Movement: continue or pause until the GM resolves the Trigger.
+- Optional D&D5e saving throw with ability + DC.
+- Zero or more damage components with formula + damage type.
+- Damage condition: always, failed save, successful save, or full on failure / half on success.
+- Optional Scene transition with a destination Arrival.
+- Transition condition: always, failed save, or successful save.
+- Reveal condition: never, on trigger, on failed save, or on successful save.
+- Post-trigger behavior: disable, remain visible, become direct transition, become persistent damage area, re-arm when empty, or remain an active trap.
 
-CTN no longer treats the previous Token as the source of truth for creating the next Token.
+### GM-only resolution cards
 
-For each travelling character:
+A normal trap trigger creates a private GM Chat card. Depending on configuration it exposes only relevant actions:
 
-- if the destination already contains a Token for that Actor, reuse and reposition it;
-- otherwise resolve the live Actor from the Actor Directory and create a Token from its current Prototype Token;
-- distribute multiple arriving character Tokens around the Arrival location to avoid stacking when possible.
+- Roll Save
+- Roll Damage
+- Apply Damage
+- Move Token
+- Release Token
+- Ignore / Release
 
-This allows a player to enter a Scene early without being duplicated when the GM later commits the party to the same Scene.
+CTN does not silently apply damage. The GM chooses when to roll and when to apply it.
 
-### D&D5e Group Actor provider
+D&D5e save rolls use the live Actor. Damage is rolled per configured component and applied through the D&D5e Actor damage API so damage types remain distinct.
 
-The CTN core remains system-agnostic. When the active system is D&D5e, CTN adds party awareness:
+### Movement lock
 
-- the native Group Actor is used as the travelling roster;
-- the primary D&D5e party is preferred when configured;
-- otherwise CTN can infer a unique Group Actor containing assigned player characters;
-- Group membership decides which player characters travel with a GM commit;
-- the Group only supplies membership — character Actors are always resolved live from `game.actors`;
-- newly materialized character Tokens always come from the Actor's current Prototype Token.
+When **Pause Until GM Resolves** is enabled, CTN cancels the attempted movement at the first detected Trigger entry, places the Token at the Trigger edge/area, and marks it as CTN-locked. Further normal movement is rejected until the GM resolves or releases it.
 
-Removing a character from the Group before a GM commit leaves that character's source Token behind and keeps that player's view in the previous Scene.
+Tiles controls also include **Release Paused Tokens** as a recovery action.
 
-### Group Token Scene representation
+### Stateful traps
 
-If the destination Scene already contains the relevant D&D5e Group Actor Token:
+Trigger Tiles persist their state in Tile flags:
 
-- CTN does not create individual character Tokens there;
-- CTN repositions the existing Group Token at the route Arrival;
-- the individual travelling character Tokens are removed from the source only after the destination Canvas is ready;
-- CTN never auto-creates or deletes the Group Token.
+- Armed
+- Triggered
+- Revealed
+- Active Hazard
+- Disabled
 
-When travelling from a Group-token Scene to a normal Scene, CTN materializes the Group members from their live Actors / Prototype Tokens.
+Examples:
 
-### Player individual navigation
+**Hidden pit:** hidden → save → failure → damage/transition → reveal → direct transition. Once revealed, later Tokens can simply step into the pit to use the configured transition.
 
-Player navigation has its own protected transaction:
+**Retracting spikes:** hidden/armed → trigger → reveal + save/damage → re-arm when the last Token leaves → hidden/armed again.
 
-1. validate permission and proximity;
-2. preload the destination locally;
-3. the primary GM prepares or reuses only that player's character Token in the destination;
-4. the GM pulls only that player;
-5. the player reports `canvasReady` for the destination through the CTN socket;
-6. only after that acknowledgement does the GM remove that character's source Token.
+**Persistent hazard:** first trigger reveals the Tile; later entries continue creating GM damage-resolution cards.
 
-If the destination is represented by a relevant Group Token, the player may view the Scene but CTN does not move the Group Token and does not delete the player's individual source Token.
+### Scene transitions from Triggers
 
-### Party-aware proximity
+Trigger-driven movement reuses the safe individual transition infrastructure introduced in 1.1.2:
 
-On ordinary Scenes, player proximity uses the assigned character Token. On a D&D5e Scene represented by a Group Token whose Group contains that character, the Group Token becomes that player's physical position for CTN route interaction.
+- live Actor authority;
+- Prototype Token creation when needed;
+- existing destination Token reuse;
+- Arrival Area placement;
+- player Scene loading handshake;
+- source cleanup only after successful destination loading;
+- D&D5e Group-token destination protection.
 
-## Release assets
+A Trigger only moves the Token/Actor that entered it. It never performs the GM collective-party commit behavior.
 
-GitHub releases should include:
+### System compatibility
 
-- `module.json`
-- `canvas-tile-navigation.zip`
+Navigation, Arrival Areas, Trigger entry/reveal/state, movement locking, and pure Scene transitions remain system-agnostic.
 
-Manifest URL:
+Save and typed-damage actions currently use the **D&D5e adapter**. On other systems, Trigger Tiles can still perform transition/state workflows without D&D5e rule automation.
 
-`https://github.com/hammer-PvP/Canvas-Tile-Navigation/releases/latest/download/module.json`
+## Existing navigation behavior retained
+
+- Scene drag → Navigation Link.
+- Hold Shift after starting the drag to bypass CTN for Foundry/other modules.
+- GM normal gesture = collective commit.
+- GM Shift + gesture = preview only.
+- Player navigation = individual transition.
+- D&D5e Group Actor membership controls collective travel.
+- Route pairing, One-Way Arrival, Incoming Route, Route Manager, Check Routes, labels, diagnostics, and contextual hover help remain intact.

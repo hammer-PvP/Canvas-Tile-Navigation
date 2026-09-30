@@ -45,22 +45,28 @@ export function tokenBounds(token) {
   };
 }
 
-function tileBounds(tile) {
+export function tileBounds(tile) {
   const bounds = tile?.shape?.bounds;
   if (bounds) {
     return {
       x: Number(bounds.x) || 0,
       y: Number(bounds.y) || 0,
-      width: Number(bounds.width) || 0,
-      height: Number(bounds.height) || 0
+      width: Math.abs(Number(bounds.width) || 0),
+      height: Math.abs(Number(bounds.height) || 0)
     };
   }
 
+  const width = Math.abs(Number(tile?.width) || 0);
+  const height = Math.abs(Number(tile?.height) || 0);
+  const centerX = Number(tile?.x) || 0;
+  const centerY = Number(tile?.y) || 0;
+  const anchorX = Number(tile?.texture?.anchorX ?? 0.5);
+  const anchorY = Number(tile?.texture?.anchorY ?? 0.5);
   return {
-    x: Number(tile?.x) || 0,
-    y: Number(tile?.y) || 0,
-    width: Math.abs(Number(tile?.width) || 0),
-    height: Math.abs(Number(tile?.height) || 0)
+    x: centerX - (width * anchorX),
+    y: centerY - (height * anchorY),
+    width,
+    height
   };
 }
 
@@ -90,102 +96,166 @@ export function isUserWithinNavigationRange(user, tile) {
   return tokens.some((token) => rectGap(tokenBounds(token), tBounds) <= maxGap);
 }
 
+function pointInsideTile(tile, point) {
+  if (tile?.shape?.testPoint) {
+    try {
+      return Boolean(tile.shape.testPoint(point));
+    } catch (_error) {
+      // Fall through to the bounds test.
+    }
+  }
+  const bounds = tileBounds(tile);
+  return point.x >= bounds.x && point.x <= bounds.x + bounds.width
+    && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+}
+
 function arrivalCenter(arrivalTile) {
   const center = arrivalTile?.shape?.center;
   if (center) return { x: Number(center.x) || 0, y: Number(center.y) || 0 };
-
   const bounds = tileBounds(arrivalTile);
+  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+}
+
+function insideArea(rect, bounds) {
+  const epsilon = 1;
+  return rect.x >= bounds.x - epsilon
+    && rect.y >= bounds.y - epsilon
+    && rect.x + rect.width <= bounds.x + bounds.width + epsilon
+    && rect.y + rect.height <= bounds.y + bounds.height + epsilon;
+}
+
+function slotRect(slot, size) {
   return {
-    x: bounds.x + (bounds.width / 2),
-    y: bounds.y + (bounds.height / 2)
+    x: Math.round(slot.x - size.width / 2),
+    y: Math.round(slot.y - size.height / 2),
+    width: size.width,
+    height: size.height
   };
 }
 
-function sceneBounds(scene) {
+function gridArrivalSlots(scene, arrivalTile) {
+  const grid = scene?.grid;
+  const bounds = tileBounds(arrivalTile);
+  const center = arrivalCenter(arrivalTile);
+  if (!grid || grid.isGridless || grid.type === CONST.GRID_TYPES.GRIDLESS) return [];
+
+  let i0;
+  let j0;
+  let i1;
+  let j1;
   try {
-    const rect = scene?.getDimensions?.()?.sceneRect;
-    if (rect) {
-      return {
-        x: Number(rect.x) || 0,
-        y: Number(rect.y) || 0,
-        width: Number(rect.width) || 0,
-        height: Number(rect.height) || 0
-      };
-    }
+    const epsilon = 0.5;
+    const points = [
+      { x: bounds.x + epsilon, y: bounds.y + epsilon },
+      { x: bounds.x + bounds.width - epsilon, y: bounds.y + epsilon },
+      { x: bounds.x + epsilon, y: bounds.y + bounds.height - epsilon },
+      { x: bounds.x + bounds.width - epsilon, y: bounds.y + bounds.height - epsilon }
+    ];
+    const offsets = points.map((point) => grid.getOffset(point));
+    i0 = Math.min(...offsets.map((offset) => offset.i)) - 1;
+    j0 = Math.min(...offsets.map((offset) => offset.j)) - 1;
+    i1 = Math.max(...offsets.map((offset) => offset.i)) + 2;
+    j1 = Math.max(...offsets.map((offset) => offset.j)) + 2;
   } catch (_error) {
-    // Fall through to a permissive bound.
+    return [];
   }
-  return null;
-}
 
-function insideScene(rect, sceneRect) {
-  if (!sceneRect) return true;
-  return rect.x >= sceneRect.x
-    && rect.y >= sceneRect.y
-    && rect.x + rect.width <= sceneRect.x + sceneRect.width
-    && rect.y + rect.height <= sceneRect.y + sceneRect.height;
-}
-
-function squareOffsets(gridSize, maxRings = 8) {
-  const result = [{ x: 0, y: 0 }];
-  for (let ring = 1; ring <= maxRings; ring += 1) {
-    for (let x = -ring; x <= ring; x += 1) {
-      result.push({ x: x * gridSize, y: -ring * gridSize });
-      result.push({ x: x * gridSize, y: ring * gridSize });
-    }
-    for (let y = -ring + 1; y <= ring - 1; y += 1) {
-      result.push({ x: -ring * gridSize, y: y * gridSize });
-      result.push({ x: ring * gridSize, y: y * gridSize });
-    }
-  }
-  return result;
-}
-
-function radialOffsets(gridSize, sides = 8, maxRings = 8) {
-  const result = [{ x: 0, y: 0 }];
-  for (let ring = 1; ring <= maxRings; ring += 1) {
-    const count = Math.max(sides, sides * ring);
-    const radius = gridSize * ring;
-    for (let i = 0; i < count; i += 1) {
-      const angle = (Math.PI * 2 * i) / count;
-      result.push({
-        x: Math.round(Math.cos(angle) * radius),
-        y: Math.round(Math.sin(angle) * radius)
+  const slots = [];
+  for (let i = i0; i < i1; i += 1) {
+    for (let j = j0; j < j1; j += 1) {
+      const point = grid.getCenterPoint({ i, j });
+      if (!pointInsideTile(arrivalTile, point)) continue;
+      slots.push({
+        x: Number(point.x) || 0,
+        y: Number(point.y) || 0,
+        i,
+        j,
+        d2: ((point.x - center.x) ** 2) + ((point.y - center.y) ** 2)
       });
     }
   }
-  return result;
+
+  return slots.sort((a, b) => a.d2 - b.d2 || a.i - b.i || a.j - b.j);
 }
 
-function candidateOffsets(scene) {
-  const gridSize = Number(scene?.grid?.size) || 100;
-  const type = scene?.grid?.type;
+function gridlessArrivalSlots(scene, arrivalTile) {
+  const bounds = tileBounds(arrivalTile);
+  const center = arrivalCenter(arrivalTile);
+  const spacing = Math.max(1, Number(scene?.grid?.size) || 100);
+  const slots = [];
 
-  if (type === CONST.GRID_TYPES.GRIDLESS) return radialOffsets(gridSize, 8);
-  if (type === CONST.GRID_TYPES.HEXODDR
-      || type === CONST.GRID_TYPES.HEXEVENR
-      || type === CONST.GRID_TYPES.HEXODDQ
-      || type === CONST.GRID_TYPES.HEXEVENQ) {
-    return radialOffsets(gridSize, 6);
-  }
-  return squareOffsets(gridSize);
-}
+  const cols = Math.max(1, Math.floor(bounds.width / spacing));
+  const rows = Math.max(1, Math.floor(bounds.height / spacing));
+  const usedWidth = cols * spacing;
+  const usedHeight = rows * spacing;
+  const startX = bounds.x + (bounds.width - usedWidth) / 2 + spacing / 2;
+  const startY = bounds.y + (bounds.height - usedHeight) / 2 + spacing / 2;
 
-function positionRect(center, offset, size) {
-  const x = Math.round(center.x + offset.x - (size.width / 2));
-  const y = Math.round(center.y + offset.y - (size.height / 2));
-  return { x, y, width: size.width, height: size.height };
-}
-
-function pickFreePosition({ center, size, offsets, occupied, sceneRect }) {
-  for (const offset of offsets) {
-    const rect = positionRect(center, offset, size);
-    if (!insideScene(rect, sceneRect)) continue;
-    if (occupied.some((other) => overlaps(rect, other))) continue;
-    return rect;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const x = startX + col * spacing;
+      const y = startY + row * spacing;
+      if (!pointInsideTile(arrivalTile, { x, y })) continue;
+      slots.push({ x, y, row, col, d2: ((x - center.x) ** 2) + ((y - center.y) ** 2) });
+    }
   }
 
-  return positionRect(center, { x: 0, y: 0 }, size);
+  if (!slots.length) slots.push({ ...center, d2: 0 });
+  return slots.sort((a, b) => a.d2 - b.d2 || (a.row ?? 0) - (b.row ?? 0) || (a.col ?? 0) - (b.col ?? 0));
+}
+
+function arrivalSlots(scene, arrivalTile) {
+  const grid = scene?.grid;
+  const slots = grid && !grid.isGridless && grid.type !== CONST.GRID_TYPES.GRIDLESS
+    ? gridArrivalSlots(scene, arrivalTile)
+    : gridlessArrivalSlots(scene, arrivalTile);
+  return slots.length ? slots : [{ ...arrivalCenter(arrivalTile), d2: 0 }];
+}
+
+function clampRectInsideArea(rect, bounds) {
+  if (rect.width > bounds.width || rect.height > bounds.height) return rect;
+  return {
+    ...rect,
+    x: Math.min(Math.max(rect.x, bounds.x), bounds.x + bounds.width - rect.width),
+    y: Math.min(Math.max(rect.y, bounds.y), bounds.y + bounds.height - rect.height)
+  };
+}
+
+function pickArrivalPosition({ size, slots, arrivalBounds, occupied, slotUse }) {
+  const fitting = slots
+    .map((slot, index) => ({ slot, index, rect: slotRect(slot, size) }))
+    .filter((entry) => insideArea(entry.rect, arrivalBounds));
+
+  const candidates = fitting.length ? fitting : slots.map((slot, index) => ({
+    slot,
+    index,
+    rect: clampRectInsideArea(slotRect(slot, size), arrivalBounds)
+  }));
+
+  // First pass: use every safe, non-overlapping location in the GM-drawn
+  // Arrival Area before stacking anybody.
+  for (const entry of candidates) {
+    if ((slotUse.get(entry.index) ?? 0) > 0) continue;
+    if (occupied.some((other) => overlaps(entry.rect, other))) continue;
+    slotUse.set(entry.index, 1);
+    return entry.rect;
+  }
+
+  // Second pass: the Arrival Area is authoritative. If there are more
+  // travellers than available cells, stack inside the area instead of ever
+  // spilling outside a wall/corridor the GM intentionally bounded.
+  const ordered = [...candidates].sort((a, b) => {
+    const au = slotUse.get(a.index) ?? 0;
+    const bu = slotUse.get(b.index) ?? 0;
+    return au - bu || a.slot.d2 - b.slot.d2 || a.index - b.index;
+  });
+
+  const selected = ordered[0] ?? {
+    index: 0,
+    rect: clampRectInsideArea(slotRect(arrivalCenter({ shape: { center: { x: arrivalBounds.x + arrivalBounds.width / 2, y: arrivalBounds.y + arrivalBounds.height / 2 } } }), size), arrivalBounds)
+  };
+  slotUse.set(selected.index, (slotUse.get(selected.index) ?? 0) + 1);
+  return selected.rect;
 }
 
 async function actorTokenPixelSize(actor, targetScene, existingToken = null) {
@@ -230,7 +300,7 @@ async function createTokenFromActor(targetScene, actor, dataPosition) {
   data.x = dataPosition.x;
   data.y = dataPosition.y;
 
-  const [created] = await targetScene.createEmbeddedDocuments("Token", [data]);
+  const [created] = await targetScene.createEmbeddedDocuments("Token", [data], { ctnTriggerInternal: true });
   return created ?? null;
 }
 
@@ -247,7 +317,11 @@ async function buildActorEntries(actors, targetScene) {
 
 async function placeActorEntries(entries, targetScene, arrivalTile) {
   if (!entries.length || !arrivalTile) {
-    return { tokens: [], successfulActorIds: new Set(), failedActorIds: new Set(entries.map((entry) => entry.actor.id)) };
+    return {
+      tokens: [],
+      successfulActorIds: new Set(),
+      failedActorIds: new Set(entries.map((entry) => entry.actor.id))
+    };
   }
 
   const movingTargetIds = new Set(entries.map((entry) => entry.targetToken?.id).filter(Boolean));
@@ -255,26 +329,26 @@ async function placeActorEntries(entries, targetScene, arrivalTile) {
     .filter((token) => !movingTargetIds.has(token.id))
     .map(tokenBounds);
 
-  const center = arrivalCenter(arrivalTile);
-  const offsets = candidateOffsets(targetScene);
-  const bounds = sceneBounds(targetScene);
+  const slots = arrivalSlots(targetScene, arrivalTile);
+  const arrivalBounds = tileBounds(arrivalTile);
+  const slotUse = new Map();
   const tokens = [];
   const successfulActorIds = new Set();
   const failedActorIds = new Set();
 
   for (const entry of entries) {
-    const rect = pickFreePosition({
-      center,
+    const rect = pickArrivalPosition({
       size: entry.size,
-      offsets,
+      slots,
+      arrivalBounds,
       occupied,
-      sceneRect: bounds
+      slotUse
     });
 
     try {
       let token;
       if (entry.targetToken) {
-        await entry.targetToken.update({ x: rect.x, y: rect.y });
+        await entry.targetToken.update({ x: rect.x, y: rect.y }, { ctnTriggerInternal: true });
         token = entry.targetToken;
       } else {
         token = await createTokenFromActor(targetScene, entry.actor, rect);
@@ -299,7 +373,11 @@ async function placeActorEntries(entries, targetScene, arrivalTile) {
 
 export async function reconcileActorsAtArrival(actors, targetScene, arrivalTile) {
   if (!targetScene || !arrivalTile) {
-    return { tokens: [], successfulActorIds: new Set(), failedActorIds: new Set((actors ?? []).map((actor) => actor.id)) };
+    return {
+      tokens: [],
+      successfulActorIds: new Set(),
+      failedActorIds: new Set((actors ?? []).map((actor) => actor.id))
+    };
   }
   const entries = await buildActorEntries(actors ?? [], targetScene);
   return placeActorEntries(entries, targetScene, arrivalTile);
@@ -312,20 +390,21 @@ export async function repositionExistingTokenAtArrival(token, targetScene, arriv
   const occupied = [...targetScene.tokens]
     .filter((other) => other.id !== token.id)
     .map(tokenBounds);
-
-  const rect = pickFreePosition({
-    center: arrivalCenter(arrivalTile),
+  const slots = arrivalSlots(targetScene, arrivalTile);
+  const arrivalBounds = tileBounds(arrivalTile);
+  const rect = pickArrivalPosition({
     size: {
       width: Math.max(1, Number(size.width) || 1),
       height: Math.max(1, Number(size.height) || 1)
     },
-    offsets: candidateOffsets(targetScene),
+    slots,
+    arrivalBounds,
     occupied,
-    sceneRect: sceneBounds(targetScene)
+    slotUse: new Map()
   });
 
   try {
-    await token.update({ x: rect.x, y: rect.y });
+    await token.update({ x: rect.x, y: rect.y }, { ctnTriggerInternal: true });
     return true;
   } catch (error) {
     console.warn(`${MODULE_ID} | Could not reposition group token ${token.name ?? token.id}`, error);
@@ -344,7 +423,7 @@ export async function deleteActorTokensFromScene(scene, actorIds) {
   if (!ids.length) return [];
 
   try {
-    await scene.deleteEmbeddedDocuments("Token", ids);
+    await scene.deleteEmbeddedDocuments("Token", ids, { ctnTriggerInternal: true });
     return ids;
   } catch (error) {
     console.warn(`${MODULE_ID} | Could not clean travelling Tokens from ${scene.name}`, error);

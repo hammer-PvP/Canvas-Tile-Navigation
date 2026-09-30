@@ -180,3 +180,63 @@
 .ctn-canvas-label__range {
   color: #ffd25b;
 }
+
+.ctn-trigger-config hr {
+  margin: 0.75rem 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-light-2);
+}
+
+.ctn-trigger-config h4 {
+  margin: 0.4rem 0;
+}
+
+.ctn-trigger-damage-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(130px, 0.8fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.ctn-trigger-damage-row button {
+  width: 2rem;
+  min-width: 2rem;
+}
+
+.ctn-trigger-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ctn-trigger-card h3 {
+  margin: 0;
+}
+
+.ctn-trigger-card__paused {
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--color-border-highlight, #caa24d);
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.ctn-trigger-card__section {
+  padding: 0.25rem 0;
+}
+
+.ctn-trigger-card__result,
+.ctn-trigger-card__resolved {
+  margin-top: 0.25rem;
+  font-weight: 700;
+}
+
+.ctn-trigger-card__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.ctn-trigger-card__actions button {
+  min-width: 0;
+}

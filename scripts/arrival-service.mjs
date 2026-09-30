@@ -13,6 +13,7 @@ import {
 } from "./constants.mjs";
 import { scheduleRouteReconciliation } from "./route-service.mjs";
 import { openRouteManager } from "./route-manager.mjs";
+import { armTriggerPlacement, releaseAllPausedTokens } from "./trigger-service.mjs";
 
 let armed = false;
 let canvasElement = null;
@@ -131,14 +132,34 @@ export function registerArrivalControls() {
       onChange: () => armArrivalPlacement()
     };
 
+    controls.tiles.tools.ctnTriggerTile = {
+      name: "ctnTriggerTile",
+      title: "CTN.Controls.CreateTrigger",
+      icon: "fa-solid fa-triangle-exclamation",
+      order: baseOrder + 1,
+      button: true,
+      visible: true,
+      onChange: () => armTriggerPlacement()
+    };
+
     controls.tiles.tools.ctnCheckRoutes = {
       name: "ctnCheckRoutes",
       title: "CTN.Controls.CheckRoutes",
       icon: "fa-solid fa-list-check",
-      order: baseOrder + 1,
+      order: baseOrder + 2,
       button: true,
       visible: true,
       onChange: () => openRouteManager()
+    };
+
+    controls.tiles.tools.ctnReleasePaused = {
+      name: "ctnReleasePaused",
+      title: "CTN.Controls.ReleasePaused",
+      icon: "fa-solid fa-unlock-keyhole",
+      order: baseOrder + 3,
+      button: true,
+      visible: true,
+      onChange: () => void releaseAllPausedTokens()
     };
   });
 

@@ -5,6 +5,7 @@ export const ROUTES_CHANGED_HOOK = `${MODULE_ID}.routesChanged`;
 
 export const FLAGS = Object.freeze({
   ROOT: "navigation",
+  TRIGGER_ROOT: "trigger",
   TARGET_SCENE_UUID: "targetSceneUuid",
   DISPLAY_MODE: "displayMode",
   ICON: "icon",
@@ -94,5 +95,47 @@ export const ICON_PATHS = Object.freeze({
   [ICONS.BACK]: `modules/${MODULE_ID}/assets/icons/back.png`
 });
 
+export const TRIGGER_STATES = Object.freeze({
+  ARMED: "armed",
+  TRIGGERED: "triggered",
+  REVEALED: "revealed",
+  ACTIVE_HAZARD: "active-hazard",
+  DISABLED: "disabled"
+});
+
+export const TRIGGER_INITIAL_VISIBILITY = Object.freeze({
+  HIDDEN: "hidden",
+  VISIBLE: "visible"
+});
+
+export const TRIGGER_PAUSE = Object.freeze({
+  NEVER: "never",
+  ON_TRIGGER: "on-trigger"
+});
+
+export const TRIGGER_CONDITIONS = Object.freeze({
+  ALWAYS: "always",
+  FAILED_SAVE: "failed-save",
+  SUCCESSFUL_SAVE: "successful-save",
+  HALF_ON_SUCCESS: "half-on-success"
+});
+
+export const TRIGGER_REVEAL = Object.freeze({
+  NEVER: "never",
+  ON_TRIGGER: "on-trigger",
+  FAILED_SAVE: "failed-save",
+  SUCCESSFUL_SAVE: "successful-save"
+});
+
+export const TRIGGER_AFTER = Object.freeze({
+  DISABLE: "disable",
+  REMAIN_VISIBLE: "remain-visible",
+  DIRECT_TRANSITION: "direct-transition",
+  PERSISTENT_DAMAGE: "persistent-damage",
+  REARM_WHEN_EMPTY: "rearm-when-empty",
+  REMAIN_ACTIVE_TRAP: "remain-active-trap"
+});
+
 export const MISSING_SCENE_ICON = `modules/${MODULE_ID}/assets/internal/missing-scene.png`;
 export const ARRIVAL_POINT_ICON = ICON_PATHS[ICONS.ENTER_DOOR];
+export const TRIGGER_ZONE_ICON = `modules/${MODULE_ID}/assets/internal/trigger-zone.png`;

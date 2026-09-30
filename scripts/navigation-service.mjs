@@ -13,6 +13,7 @@ import {
   findGroupTokenForParty,
   getGroupRepresentationForActorAsync,
   getUserActor,
+  nonGMUsers,
   resolveTravelRoster,
   usersForRoster
 } from "./party-service.mjs";
@@ -40,6 +41,11 @@ function activePrimaryGM() {
 
 function randomTransitionId() {
   return foundry.utils.randomID?.() ?? crypto.randomUUID();
+}
+
+function userForActor(actor, { activeOnly = false } = {}) {
+  if (!actor) return null;
+  return nonGMUsers({ activeOnly }).find((user) => getUserActor(user)?.id === actor.id) ?? null;
 }
 
 function notify(key, data = {}) {
@@ -368,6 +374,37 @@ function beginLocalPlayerTransition(tileDocument) {
   return transitionId;
 }
 
+function beginExternalLocalPlayerTransition({ transitionId, targetSceneId }) {
+  const targetScene = game.scenes.get(targetSceneId);
+  if (!targetScene || !transitionId) return false;
+
+  if (localNavigationInProgress) {
+    game.socket.emit(SOCKET_NAME, {
+      type: "player-transition-abort",
+      transitionId,
+      requesterId: game.user.id,
+      reason: "CTN.Notifications.NavigationBusy"
+    });
+    return false;
+  }
+
+  const timeout = setTimeout(() => {
+    if (!localPlayerTransitions.has(transitionId)) return;
+    localPlayerTransitions.delete(transitionId);
+    localNavigationInProgress = false;
+    notify("CTN.Notifications.NavigationTimeout");
+  }, TRANSITION_TIMEOUT_MS + 2_000);
+
+  localPlayerTransitions.set(transitionId, {
+    targetSceneId,
+    arrivedSent: false,
+    timeout
+  });
+  localNavigationInProgress = true;
+  void safePreload(targetScene, { broadcast: false });
+  return true;
+}
+
 function finishLocalPlayerTransition(transitionId, { reason = null } = {}) {
   const pending = localPlayerTransitions.get(transitionId);
   if (pending?.timeout) clearTimeout(pending.timeout);
@@ -408,6 +445,15 @@ async function handleSocketMessage(message) {
     return;
   }
 
+  if (message.type === "trigger-transition-begin") {
+    if (message.targetUserId !== game.user.id || game.user.isGM) return;
+    beginExternalLocalPlayerTransition({
+      transitionId: message.transitionId,
+      targetSceneId: message.targetSceneId
+    });
+    return;
+  }
+
   const primaryGM = activePrimaryGM();
   if (!primaryGM || primaryGM.id !== game.user.id) return;
 
@@ -431,12 +477,89 @@ async function handleSocketMessage(message) {
 
   if (message.type === "player-transition-arrived") {
     await finalizePlayerTransition(message);
+    return;
+  }
+
+  if (message.type === "player-transition-abort") {
+    const pending = authorityPlayerTransitions.get(message.transitionId);
+    if (!pending || pending.requesterId !== message.requesterId) return;
+    clearTimeout(pending.timer);
+    authorityPlayerTransitions.delete(message.transitionId);
+    authorityPlayerLocks.delete(message.requesterId);
   }
 }
 
 export function initializeNavigationSocket() {
   game.socket.on(SOCKET_NAME, handleSocketMessage);
   Hooks.on("canvasReady", handleLocalCanvasReady);
+}
+
+export async function requestTriggeredActorTransition({ sourceToken, targetScene, arrivalTile }) {
+  if (!game.user?.isGM || !sourceToken || !targetScene || !arrivalTile) return false;
+
+  const actor = sourceToken.baseActor ?? game.actors.get(sourceToken.actorId) ?? sourceToken.actor ?? null;
+  if (!actor) return false;
+
+  const sourceScene = sourceToken.parent;
+  const requester = userForActor(actor, { activeOnly: true });
+
+  try {
+    await safePreload(targetScene, { broadcast: false });
+
+    const groupRepresentation = await getGroupRepresentationForActorAsync(targetScene, actor);
+    let cleanupSource = false;
+
+    if (!groupRepresentation) {
+      const placement = await reconcileActorsAtArrival([actor], targetScene, arrivalTile);
+      cleanupSource = placement.successfulActorIds.has(actor.id);
+      if (!cleanupSource) return false;
+    }
+
+    // A player entering a collective Group-token Scene is view-only for token
+    // state. Never move the Group Token or delete the individual source Token.
+    if (groupRepresentation) cleanupSource = false;
+
+    if (!requester) {
+      if (cleanupSource && sourceScene) {
+        await deleteActorTokensFromScene(sourceScene, new Set([actor.id]));
+      }
+      return true;
+    }
+
+    if (authorityPlayerLocks.has(requester.id)) return false;
+    authorityPlayerLocks.add(requester.id);
+
+    const transitionId = randomTransitionId();
+    const timer = setTimeout(() => {
+      const pending = authorityPlayerTransitions.get(transitionId);
+      if (!pending) return;
+      authorityPlayerTransitions.delete(transitionId);
+      authorityPlayerLocks.delete(requester.id);
+      emitToUser("player-transition-failed", requester.id, {
+        transitionId,
+        reason: "CTN.Notifications.NavigationTimeout"
+      });
+    }, TRANSITION_TIMEOUT_MS);
+
+    authorityPlayerTransitions.set(transitionId, {
+      requesterId: requester.id,
+      sourceSceneId: sourceScene?.id ?? null,
+      targetSceneId: targetScene.id,
+      actorId: actor.id,
+      cleanupSource,
+      timer
+    });
+
+    emitToUser("trigger-transition-begin", requester.id, {
+      transitionId,
+      targetSceneId: targetScene.id
+    });
+    targetScene.pullUsers([requester.id]);
+    return true;
+  } catch (error) {
+    console.error(`${MODULE_ID} | Trigger Scene transition failed`, error);
+    return false;
+  }
 }
 
 export async function requestNavigation(tileDocument, { preview = false } = {}) {
