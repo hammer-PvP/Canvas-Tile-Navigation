@@ -493,6 +493,22 @@ CTN suppresses Trigger evaluation during its own materialization step and explic
 
 CTN ships a small transparent overlay library for GM preparation.
 
+## Asset Notice
+
+The bundled visual assets are generic gameplay resources intended to represent common environmental elements, hazards, navigation markers, and similar spatial features. They include concepts such as fire, acid, poison, ice, lava, holes, spikes, and related effects.
+
+These assets are provided solely as optional visual resources for use with Canvas Tile Navigation. They are not intended to reproduce, represent, or reference any specific adventure, setting, map, character, creature, product, brand, or third-party intellectual property.
+
+The bundled assets are not required for CTN's core functionality. GMs may use their own images and artwork for Navigation Tiles, Trigger Tiles, Arrival Areas, Hazard Areas, and other supported Tile-based workflows.
+
+## AI-Assisted Asset Disclosure
+
+Some bundled visual assets included with Canvas Tile Navigation were created with the assistance of generative AI tools and may have received additional manual selection, cleanup, transparency preparation, conversion, or other editing before being packaged with the module.
+
+These AI-assisted assets are used only as optional generic visual resources for gameplay elements such as hazards, holes, spikes, fire, acid, poison, ice, lava, and similar environmental effects. They are not intended to depict or reproduce any specific protected character, setting, adventure, map, product, brand, or third-party artwork.
+
+Canvas Tile Navigation does **not** use, call, or require any generative AI service at runtime. Generative AI is only part of the creation process for some bundled visual assets.
+
 ## Holes
 
 `assets/holes/`
