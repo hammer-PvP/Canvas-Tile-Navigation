@@ -529,9 +529,9 @@ function renderResolutionCard(trigger, token, resolution) {
     buttons.push(resolutionButton("save-fail", game.i18n.localize("CTN.Trigger.NotPass"), "fa-solid fa-xmark"));
   }
 
-  // D&D5e resolves eligible damage automatically through Actor5e.applyDamage.
-  // The generic CTN path retains its explicit Roll / Apply controls.
-  if (!nativeDamage && damageEligible && !resolution.damageRolls?.length) {
+  // Damage never starts automatically. The GM explicitly rolls it from the
+  // Trigger card. D&D5e still owns native typed application after that roll.
+  if (damageEligible && !resolution.damageRolls?.length && !resolution.damageApplied) {
     buttons.push(resolutionButton("roll-damage", game.i18n.localize("CTN.Trigger.RollDamage"), "fa-solid fa-dice"));
   }
   if (!nativeDamage && damageEligible && resolution.damageRolls?.length && !resolution.damageApplied) {
@@ -707,20 +707,22 @@ async function handleResolutionAction(message, action, button = null) {
   if (!trigger || !token || !actor || !data) return;
 
   if (action === "save-pass" || action === "save-fail") {
-    const dataAtDecision = foundry.utils.deepClone(data);
     resolution.saveResult = action === "save-pass";
     resolution.saveTotal = null;
     await applyRevealForPhase(trigger, resolution, "save");
     await finalizeTriggerBehavior(trigger, resolution);
-    await resolveNativeDamage(trigger, actor, resolution, dataAtDecision);
     await updateResolutionMessage(message, resolution);
     return;
   }
 
   if (action === "roll-damage") {
-    resolution.damageRolls = await rollTriggerDamage(actor, getTriggerDamageComponents(data), {
-      flavor: triggerTitle(trigger, data)
-    });
+    if (supportsNativeTriggerDamage(actor)) {
+      await resolveNativeDamage(trigger, actor, resolution);
+    } else {
+      resolution.damageRolls = await rollTriggerDamage(actor, getTriggerDamageComponents(data), {
+        flavor: triggerTitle(trigger, data)
+      });
+    }
     await updateResolutionMessage(message, resolution);
     return;
   }
@@ -849,10 +851,10 @@ async function handleTriggerEnter(message) {
 
   // Save OFF means the occurrence proceeds directly into its configured
   // consequences. Persistent hazards normally reach this path because their
-  // activation can mutate Save State to OFF.
+  // activation can mutate Save State to OFF. Damage still waits for the GM to
+  // explicitly press Roll Damage on the Trigger card.
   if (!resolution.saveRequired) {
     if (!isPersistentHazard) await finalizeTriggerBehavior(trigger, resolution);
-    await resolveNativeDamage(trigger, actorOfToken(token), resolution, dataAtEntry);
   }
 
   await updateResolutionMessage(chatMessage, resolution);

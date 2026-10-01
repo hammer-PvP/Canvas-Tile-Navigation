@@ -2,6 +2,20 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.7
+
+### Changed
+
+- Trigger damage is no longer rolled or applied automatically when PASS / NOT PASS makes damage eligible.
+- Entering an active Persistent Hazard no longer rolls or applies damage automatically.
+- The GM now explicitly starts every eligible damage occurrence with **Roll Damage**.
+- In D&D5e, **Roll Damage** keeps the public roll and native typed `Actor5e.applyDamage()` application.
+- Generic systems keep the existing CTN Roll / multiplier / Apply workflow.
+
+### Fixed
+
+- Persistent hazards can now be intentionally ignored for a specific occurrence by releasing the Token without rolling damage.
+
 ## 1.1.6
 
 ### Added

@@ -367,7 +367,8 @@ When D&D5e is active, CTN uses the D&D5e Actor damage pipeline rather than repro
 The flow is:
 
 ```text
-Trigger determines who is hit and when damage applies
+Trigger determines who is hit and when damage is eligible
+→ GM presses Roll Damage on the Trigger Resolution card
 → CTN rolls the configured typed damage publicly
 → CTN passes the typed components to D&D5e
 → D&D5e applies the damage to the triggering Actor
@@ -377,7 +378,7 @@ Damage components remain separated by type, so D&D5e can apply its own resistanc
 
 The damage roll messages are public. The administrative Trigger Resolution card remains GM-only.
 
-In D&D5e, eligible damage is rolled and applied automatically once the Trigger result is known. The GM does not need to select the target manually: the triggering Token already identifies the Actor.
+In D&D5e, eligible damage is **never rolled merely because a Trigger result was reached or a Token entered an active hazard**. The GM starts damage explicitly with **Roll Damage**. Once pressed, CTN rolls publicly and D&D5e applies the typed damage natively to the triggering Actor; no manual target selection is required.
 
 ---
 
@@ -415,7 +416,8 @@ Subsequent entries then become:
 ```text
 enter ACTIVE_HAZARD
 → optional movement pause
-→ damage
+→ Roll Damage (GM)
+→ native D&D5e application or generic CTN damage flow
 → Release Token
 ```
 
