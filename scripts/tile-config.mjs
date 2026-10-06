@@ -16,7 +16,9 @@ import {
   TRIGGER_INITIAL_VISIBILITY,
   TRIGGER_PAUSE,
   TRIGGER_REVEAL,
-  TRIGGER_SAVE_STATES
+  TRIGGER_SAVE_STATES,
+  TRANSITION_ACTIVATIONS,
+  TRANSITION_STATUS
 } from "./constants.mjs";
 import {
   allLinks,
@@ -40,6 +42,14 @@ import {
   triggerData
 } from "./trigger-service.mjs";
 import { abilityChoices, damageTypeChoices, supportsTriggerRules } from "./trigger-adapter.mjs";
+import {
+  disconnectTransition,
+  isTransitionNameAvailable,
+  transitionCandidates,
+  transitionData,
+  transitionStatus,
+  transitionStatusLabel
+} from "./transition-service.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 
@@ -491,6 +501,119 @@ function linkConfigHTML(tile, nav) {
   `;
 }
 
+
+function transitionStatusHTML(tile) {
+  const status = transitionStatus(tile);
+  const css = status === TRANSITION_STATUS.BROKEN
+    ? "broken"
+    : status === TRANSITION_STATUS.DISCONNECTED
+      ? "warning"
+      : "ok";
+  return `<span class="ctn-route-status ${css}">${escapeHTML(transitionStatusLabel(status))}</span>`;
+}
+
+function transitionConfigHTML(tile, data) {
+  const activationOptions = [
+    [TRANSITION_ACTIVATIONS.SINGLE, localized("CTN.Transition.ActivationSingle")],
+    [TRANSITION_ACTIVATIONS.DOUBLE, localized("CTN.Transition.ActivationDouble")],
+    [TRANSITION_ACTIVATIONS.ENTER, localized("CTN.Transition.ActivationEnter")]
+  ].map(([value, label]) => option(value, label, data.activation)).join("");
+
+  const connected = Boolean(data.connectedTileUuid);
+  const candidates = transitionCandidates(tile);
+  const entries = [`<option value=""${connected ? " disabled" : ""}>${escapeHTML(localized("CTN.Transition.NotConnected"))}</option>`];
+  const currentResolved = candidates.some((candidate) => candidate.current);
+  if (connected && !currentResolved) {
+    entries.push(`<option value="${escapeHTML(data.connectedTileUuid)}" selected disabled>${escapeHTML(localized("CTN.Transition.MissingPartner"))}</option>`);
+  }
+  for (const candidate of candidates) {
+    const statusSuffix = candidate.current
+      ? localized("CTN.Transition.CurrentPartner")
+      : candidate.status === TRANSITION_STATUS.CONNECTED
+        ? localized("CTN.Transition.StatusConnected")
+        : candidate.status === TRANSITION_STATUS.BROKEN
+          ? localized("CTN.Transition.StatusBroken")
+          : localized("CTN.Transition.StatusAvailable");
+    const disabled = candidate.disabled ? " disabled" : "";
+    const selected = candidate.current ? " selected" : "";
+    entries.push(`<option value="${escapeHTML(candidate.uuid)}"${selected}${disabled}>${escapeHTML(`${candidate.label} — ${statusSuffix}`)}</option>`);
+  }
+
+  const hiddenOptions = [
+    ["false", localized("CTN.Transition.Visible")],
+    ["true", localized("CTN.Transition.Hidden")]
+  ].map(([value, label]) => option(value, label, String(Boolean(tile.hidden)))).join("");
+
+  return `
+    <fieldset class="ctn-config ctn-transition-config" data-ctn-transition-config>
+      <legend><i class="fa-solid fa-right-to-bracket"></i> ${escapeHTML(localized("CTN.Transition.ConfigTitle"))}</legend>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Transition.Name"))}</label>
+        <div class="form-fields"><input type="text" data-ctn-transition-name name="flags.${MODULE_ID}.transition.name" value="${escapeHTML(data.name)}"></div>
+      </div>
+      <p class="hint ctn-transition-name-warning" data-ctn-transition-name-warning hidden>${escapeHTML(localized("CTN.Transition.DuplicateNameHint"))}</p>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Transition.ConnectTo"))}</label>
+        <div class="form-fields">
+          <select name="flags.${MODULE_ID}.transition.connectedTileUuid">${entries.join("")}</select>
+          ${connected ? `<button type="button" data-ctn-transition-disconnect><i class="fa-solid fa-link-slash"></i> ${escapeHTML(localized("CTN.Transition.Disconnect"))}</button>` : ""}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Transition.Status"))}</label>
+        <div class="form-fields">${transitionStatusHTML(tile)}</div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Transition.Activation"))}</label>
+        <div class="form-fields"><select name="flags.${MODULE_ID}.transition.activation">${activationOptions}</select></div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Transition.Visibility"))}</label>
+        <div class="form-fields"><select name="flags.${MODULE_ID}.transition.hidden">${hiddenOptions}</select></div>
+      </div>
+
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.Transition.Effect"))}</label>
+        <div class="form-fields"><input type="hidden" data-ctn-transition-effect-value name="flags.${MODULE_ID}.transition.effectEnabled" value="${data.effectEnabled ? "true" : "false"}"><input type="checkbox" data-ctn-transition-effect-toggle ${data.effectEnabled ? "checked" : ""}></div>
+      </div>
+      <p class="hint">${escapeHTML(localized("CTN.Transition.EffectHint"))}</p>
+      <p class="hint">${escapeHTML(localized("CTN.Transition.PairHint"))}</p>
+    </fieldset>
+  `;
+}
+
+function wireTransitionConfig(container, tile) {
+  const root = container.querySelector("[data-ctn-transition-config]");
+  if (!root) return;
+
+  const input = root.querySelector("[data-ctn-transition-name]");
+  const warning = root.querySelector("[data-ctn-transition-name-warning]");
+  const refreshNameWarning = () => {
+    if (!input || !warning) return;
+    warning.hidden = isTransitionNameAvailable(tile, input.value);
+  };
+  input?.addEventListener("input", refreshNameWarning);
+  refreshNameWarning();
+
+  const effectToggle = root.querySelector("[data-ctn-transition-effect-toggle]");
+  const effectValue = root.querySelector("[data-ctn-transition-effect-value]");
+  effectToggle?.addEventListener("change", () => {
+    if (!effectValue) return;
+    effectValue.value = effectToggle.checked ? "true" : "false";
+    effectValue.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  root.querySelector("[data-ctn-transition-disconnect]")?.addEventListener("click", async () => {
+    await disconnectTransition(tile);
+    tile.sheet?.render?.(true);
+  });
+}
+
 function getSubmittedValue(changes, path, fallback) {
   if (Object.prototype.hasOwnProperty.call(changes, path)) return changes[path];
   const value = foundry.utils.getProperty(changes, path);
@@ -608,16 +731,19 @@ export function registerTileConfigHooks() {
     if (!(application instanceof TileConfig)) return;
 
     const tile = application.document;
+    const transition = transitionData(tile);
     const trigger = triggerData(tile);
     const nav = navData(tile);
-    if (!trigger && !nav?.enabled) return;
+    if (!transition && !trigger && !nav?.enabled) return;
 
     const form = element.matches?.("form") ? element : element.querySelector("form");
     if (!form || form.querySelector(".ctn-config")) return;
 
-    const html = trigger
-      ? triggerConfigHTML(tile, trigger)
-      : isArrivalPoint(tile)
+    const html = transition
+      ? transitionConfigHTML(tile, transition)
+      : trigger
+        ? triggerConfigHTML(tile, trigger)
+        : isArrivalPoint(tile)
         ? arrivalConfigHTML(tile, nav)
         : linkConfigHTML(tile, nav);
 
@@ -635,7 +761,8 @@ export function registerTileConfigHooks() {
 
     if (!host) return;
     host.insertAdjacentHTML("beforeend", html);
-    if (trigger) wireTriggerConfig(host, tile);
+    if (transition) wireTransitionConfig(host, tile);
+    else if (trigger) wireTriggerConfig(host, tile);
     else {
       wireRouteModeVisibility(host);
       if (isArrivalPoint(tile)) wireIncomingRoute(host, tile);

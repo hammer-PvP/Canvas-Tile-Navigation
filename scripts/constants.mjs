@@ -79,6 +79,19 @@ export const GESTURES = Object.freeze({
   CTRL: "ctrl"
 });
 
+
+export const TRANSITION_ACTIVATIONS = Object.freeze({
+  SINGLE: "single",
+  DOUBLE: "double",
+  ENTER: "enter"
+});
+
+export const TRANSITION_STATUS = Object.freeze({
+  DISCONNECTED: "disconnected",
+  CONNECTED: "connected",
+  BROKEN: "broken"
+});
+
 export const ICONS = Object.freeze({
   ARROW: "arrow",
   ENTER_DOOR: "enter-door",

@@ -14,6 +14,7 @@ import {
 import { scheduleRouteReconciliation } from "./route-service.mjs";
 import { openRouteManager } from "./route-manager.mjs";
 import { armTriggerPlacement, releaseAllPausedTokens } from "./trigger-service.mjs";
+import { armTransitionPlacement } from "./transition-service.mjs";
 
 let armed = false;
 let canvasElement = null;
@@ -142,11 +143,21 @@ export function registerArrivalControls() {
       onChange: () => armTriggerPlacement()
     };
 
+    controls.tiles.tools.ctnTransitionTile = {
+      name: "ctnTransitionTile",
+      title: "CTN.Controls.CreateTransition",
+      icon: "fa-solid fa-right-to-bracket",
+      order: baseOrder + 2,
+      button: true,
+      visible: true,
+      onChange: () => armTransitionPlacement()
+    };
+
     controls.tiles.tools.ctnCheckRoutes = {
       name: "ctnCheckRoutes",
       title: "CTN.Controls.CheckRoutes",
       icon: "fa-solid fa-list-check",
-      order: baseOrder + 2,
+      order: baseOrder + 3,
       button: true,
       visible: true,
       onChange: () => openRouteManager()
@@ -156,7 +167,7 @@ export function registerArrivalControls() {
       name: "ctnReleasePaused",
       title: "CTN.Controls.ReleasePaused",
       icon: "fa-solid fa-unlock-keyhole",
-      order: baseOrder + 3,
+      order: baseOrder + 4,
       button: true,
       visible: true,
       onChange: () => void releaseAllPausedTokens()

@@ -23,6 +23,7 @@ CTN keeps a system-agnostic core whenever Foundry already provides everything re
 - Destination labels: Off, Hover, or Always.
 - GM collective navigation and GM-only preview.
 - Player self-navigation with proximity checks when allowed.
+- Transition Tiles for explicit 1 ↔ 1 player-controlled passages.
 - D&D5e Group Actor-aware party travel.
 - Safe Token transfer with existing destination Token reuse.
 - Trigger Tiles for saves, damage, reveal, movement pause, persistent hazards, and Scene transitions.
@@ -188,6 +189,36 @@ When a Navigation Tile is available to players, a player navigation action is in
 A player never activates the Scene for the whole table and never pulls the full party.
 
 Player interaction requires the player's relevant position to be on or adjacent to the Navigation Tile. In D&D5e Group-token Scenes, the Group Token can represent the player's position when the player's assigned character belongs to that Group.
+
+---
+
+# Transition Tiles
+
+Transition Tiles are explicit, player-facing passages between two points. They are separate from Navigation Links, One-Way Arrivals, and Trigger Tiles.
+
+Two Transition Tiles form one exclusive reciprocal pair:
+
+```text
+Transition A  ⇄  Transition B
+```
+
+Each endpoint has a GM-defined name, a **Connect To** field, an activation mode, native visibility, and an optional transition effect. Connection choices are displayed as `Transition Name (Scene Name)`. A connected Transition remains visible in selection lists but is unavailable to third endpoints. Transition names must be unique within the same Scene; the same name may be reused in different Scenes.
+
+A Transition can connect points in different Scenes or two points inside the same Scene. Same-Scene travel repositions the existing Token Document. Cross-Scene travel reuses an existing destination Token when possible or creates one from the Actor's current Prototype Token, then removes only the source Token after the destination is ready. The World Active Scene is not changed.
+
+The paired Transition Tile is also the arrival point. Transition travel is individual and does not use Arrival Area distribution; multiple travellers intentionally stack at the paired endpoint.
+
+Activation modes are:
+
+- Single Click
+- Double Click
+- Enter Area
+
+Click activation requires the player's character Token to be on or directly adjacent to the Transition. Enter Area suppresses CTN's own arrival movement so an A → B transfer cannot immediately bounce B → A; after the Token leaves B, entering it normally can activate the return trip.
+
+**Enable Transition Effect** is off by default. When enabled on an endpoint, the travelling Token visually shrinks to zero before transfer and grows from zero at the paired endpoint. This is a visual placeable animation only and does not change Token Document dimensions or the Prototype Token.
+
+Transition visibility is manual. CTN does not apply Trigger states, automatic reveal logic, Saving Throws, damage, or post-trigger behavior to Transition Tiles.
 
 ---
 

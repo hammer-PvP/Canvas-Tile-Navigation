@@ -9,6 +9,7 @@ import { initializeRoutes, registerRouteHooks } from "./route-service.mjs";
 import { registerLabelHooks } from "./label-service.mjs";
 import { initializePartyProvider, registerPartyHooks } from "./party-service.mjs";
 import { initializeTriggerSocket, registerTriggerHooks } from "./trigger-service.mjs";
+import { initializeTransitionSocket, registerTransitionHooks } from "./transition-service.mjs";
 
 Hooks.once("init", () => {
   console.log(`${MODULE_ID} | Initializing`);
@@ -20,11 +21,13 @@ Hooks.once("init", () => {
   registerLabelHooks();
   registerPartyHooks();
   registerTriggerHooks();
+  registerTransitionHooks();
 });
 
 Hooks.once("ready", async () => {
   initializeNavigationSocket();
   initializeTriggerSocket();
+  initializeTransitionSocket();
   bindSceneDropCapture();
   await initializePartyProvider();
   await initializeRoutes();

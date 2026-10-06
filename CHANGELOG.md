@@ -2,6 +2,22 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.9
+
+### Added
+
+- Transition Tiles as explicit exclusive 1 ↔ 1 passage pairs.
+- Transition creation tool under Foundry's native Tiles controls.
+- Same-Scene and cross-Scene individual Token transitions.
+- Single Click, Double Click, and Enter Area activation modes.
+- Manual visibility and optional Token shrink/grow transition effect.
+- Connected / Disconnected / Broken status and reciprocal Disconnect behavior.
+- Transition names unique per Scene and `Name (Scene)` pairing labels.
+
+### Preserved
+
+- Existing Navigation Link, One-Way Arrival, Trigger, Damage, Save, Group, and Route Manager behavior is unchanged.
+
 ## 1.1.8
 
 ### Changed
