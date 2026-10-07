@@ -259,3 +259,32 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+.ctn-tab-panel {
+  overflow-y: auto;
+  padding-bottom: 0.25rem;
+}
+
+.ctn-asset-image-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+}
+
+.ctn-asset-image-fields button {
+  width: 2.25rem;
+  min-width: 2.25rem;
+}
+
+.ctn-asset-folder-settings__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem;
+}
+
+.ctn-asset-folder-settings__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}

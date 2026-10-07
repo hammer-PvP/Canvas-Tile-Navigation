@@ -50,6 +50,7 @@ import {
   transitionStatus,
   transitionStatusLabel
 } from "./transition-service.mjs";
+import { openDefaultAssetImagePicker } from "./asset-folder.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 
@@ -59,6 +60,22 @@ function option(value, label, current) {
 
 function localized(key) {
   return game.i18n.localize(key);
+}
+
+function tileImageConfigHTML(tile) {
+  return `
+    <fieldset class="ctn-config ctn-asset-config" data-ctn-asset-config>
+      <legend><i class="fa-solid fa-image"></i> ${escapeHTML(localized("CTN.AssetFolder.TileImage"))}</legend>
+      <div class="form-group">
+        <label>${escapeHTML(localized("CTN.AssetFolder.TileImage"))}</label>
+        <div class="form-fields ctn-asset-image-fields">
+          <input type="text" data-ctn-tile-image value="${escapeHTML(tile.texture?.src ?? "")}">
+          <button type="button" data-ctn-tile-image-browse title="${escapeHTML(localized("CTN.AssetFolder.BrowseImage"))}"><i class="fa-solid fa-folder-open"></i></button>
+        </div>
+      </div>
+      <p class="hint">${escapeHTML(localized("CTN.AssetFolder.TileImageHint"))}</p>
+    </fieldset>
+  `;
 }
 
 function sceneOptions(currentUuid) {
@@ -614,6 +631,127 @@ function wireTransitionConfig(container, tile) {
   });
 }
 
+function nativeTextureField(form) {
+  return form.querySelector('file-picker[name="texture.src"]')
+    ?? form.querySelector('input[name="texture.src"]');
+}
+
+function setTextureFieldValue(field, value) {
+  if (!field) return;
+  field.value = value;
+  if (field.input && field.input !== field) field.input.value = value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function wireAssetConfig(container, tile) {
+  const root = container.querySelector("[data-ctn-asset-config]");
+  if (!root) return;
+  const input = root.querySelector("[data-ctn-tile-image]");
+  const form = container.closest("form");
+  const nativeField = form ? nativeTextureField(form) : null;
+  if (!nativeField && input) input.name = "texture.src";
+
+  const syncToNative = () => setTextureFieldValue(nativeField, input?.value ?? "");
+  input?.addEventListener("input", syncToNative);
+  input?.addEventListener("change", syncToNative);
+
+  nativeField?.addEventListener?.("change", () => {
+    if (input) input.value = nativeField.value ?? tile.texture?.src ?? "";
+  });
+
+  root.querySelector("[data-ctn-tile-image-browse]")?.addEventListener("click", async () => {
+    await openDefaultAssetImagePicker({
+      current: input?.value ?? tile.texture?.src ?? "",
+      field: nativeField,
+      callback: (path) => {
+        if (input) input.value = String(path ?? "");
+        setTextureFieldValue(nativeField, String(path ?? ""));
+      }
+    });
+  });
+}
+
+function isTabControl(element) {
+  return Boolean(element?.matches?.("a, button, [role='tab']"));
+}
+
+function findTabControl(form, tab) {
+  return [...form.querySelectorAll(`[data-tab="${tab}"]`)].find(isTabControl) ?? null;
+}
+
+function findTabPanel(form, tab) {
+  return [...form.querySelectorAll(`[data-tab="${tab}"]`)].find((candidate) => {
+    if (isTabControl(candidate)) return false;
+    return Boolean(candidate.querySelector("input, select, .form-group"));
+  }) ?? null;
+}
+
+function injectCtnTab(application, form, html) {
+  if (form.querySelector("[data-ctn-tab-panel]")) return null;
+  const appearanceControl = findTabControl(form, "appearance");
+  const appearancePanel = findTabPanel(form, "appearance");
+  if (!appearanceControl || !appearancePanel) return null;
+
+  const nav = appearanceControl.closest("nav, .tabs") ?? appearanceControl.parentElement;
+  const panelParent = appearancePanel.parentElement;
+  if (!nav || !panelParent) return null;
+
+  const group = appearanceControl.dataset.group || appearancePanel.dataset.group || nav.dataset.group || "sheet";
+
+  const control = appearanceControl.cloneNode(true);
+  control.dataset.tab = "ctn";
+  if (group) control.dataset.group = group;
+  if (control.tagName === "BUTTON") control.type = "button";
+  control.classList.remove("active");
+  control.setAttribute("aria-selected", "false");
+  control.innerHTML = `<i class="fa-solid fa-route"></i> ${escapeHTML(localized("CTN.TileConfig.Tab"))}`;
+  control.setAttribute("data-ctn-tab-control", "");
+
+  const panel = document.createElement(appearancePanel.tagName.toLowerCase());
+  panel.className = appearancePanel.className;
+  panel.classList.remove("active");
+  panel.classList.add("ctn-tab-panel");
+  panel.dataset.tab = "ctn";
+  if (group) panel.dataset.group = group;
+  panel.setAttribute("data-ctn-tab-panel", "");
+  panel.innerHTML = html;
+
+  nav.append(control);
+  panelParent.append(panel);
+
+  const deactivateCtn = () => {
+    control.classList.remove("active");
+    control.setAttribute("aria-selected", "false");
+    panel.classList.remove("active");
+  };
+
+  [...nav.querySelectorAll("[data-tab]")].filter((candidate) => candidate !== control).forEach((candidate) => {
+    candidate.addEventListener("click", deactivateCtn, { capture: true });
+  });
+
+  control.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    [...nav.querySelectorAll("[data-tab]")].forEach((candidate) => {
+      candidate.classList.remove("active");
+      candidate.setAttribute?.("aria-selected", "false");
+    });
+    [...panelParent.children].filter((candidate) => candidate?.dataset?.tab).forEach((candidate) => {
+      candidate.classList.remove("active");
+    });
+
+    control.classList.add("active");
+    control.setAttribute("aria-selected", "true");
+    panel.classList.add("active");
+    if (application.tabGroups) application.tabGroups[group] = "ctn";
+  });
+
+  return panel;
+}
+
 function getSubmittedValue(changes, path, fallback) {
   if (Object.prototype.hasOwnProperty.call(changes, path)) return changes[path];
   const value = foundry.utils.getProperty(changes, path);
@@ -739,7 +877,7 @@ export function registerTileConfigHooks() {
     const form = element.matches?.("form") ? element : element.querySelector("form");
     if (!form || form.querySelector(".ctn-config")) return;
 
-    const html = transition
+    const configHTML = transition
       ? transitionConfigHTML(tile, transition)
       : trigger
         ? triggerConfigHTML(tile, trigger)
@@ -747,20 +885,23 @@ export function registerTileConfigHooks() {
         ? arrivalConfigHTML(tile, nav)
         : linkConfigHTML(tile, nav);
 
-    const appearanceCandidates = [...form.querySelectorAll('[data-tab="appearance"]')];
-    const appearancePanel = appearanceCandidates.find((candidate) => {
-      if (candidate.matches("a, button, [role='tab']")) return false;
-      return Boolean(candidate.querySelector("input, select, .form-group"));
-    });
+    const html = `${(transition || trigger) ? tileImageConfigHTML(tile) : ""}${configHTML}`;
+    let host = injectCtnTab(application, form, html);
 
-    const host = appearancePanel
-      ?? [...form.querySelectorAll(".tab, [data-tab]")].find((candidate) => {
-        if (candidate.matches("a, button, [role='tab']")) return false;
-        return Boolean(candidate.querySelector("input, select, .form-group"));
-      });
+    // Safety fallback: if a future Foundry TileConfig changes its tab markup,
+    // keep CTN configuration available in Appearance rather than losing it.
+    if (!host) {
+      const appearancePanel = findTabPanel(form, "appearance")
+        ?? [...form.querySelectorAll(".tab, [data-tab]")].find((candidate) => {
+          if (isTabControl(candidate)) return false;
+          return Boolean(candidate.querySelector("input, select, .form-group"));
+        });
+      if (!appearancePanel) return;
+      appearancePanel.insertAdjacentHTML("beforeend", html);
+      host = appearancePanel;
+    }
 
-    if (!host) return;
-    host.insertAdjacentHTML("beforeend", html);
+    if (transition || trigger) wireAssetConfig(host, tile);
     if (transition) wireTransitionConfig(host, tile);
     else if (trigger) wireTriggerConfig(host, tile);
     else {

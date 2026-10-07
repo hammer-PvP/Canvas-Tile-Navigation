@@ -216,7 +216,7 @@ Activation modes are:
 
 Click activation requires the player's character Token to be on or directly adjacent to the Transition. Enter Area suppresses CTN's own arrival movement so an A → B transfer cannot immediately bounce B → A; after the Token leaves B, entering it normally can activate the return trip.
 
-**Enable Transition Effect** is off by default. When enabled on an endpoint, the travelling Token visually shrinks to zero before transfer and grows from zero at the paired endpoint. This is a visual placeable animation only and does not change Token Document dimensions or the Prototype Token.
+**Enable Transition Effect** is off by default. When enabled on an endpoint, the travelling Token visually shrinks to zero before transfer and grows from zero at the paired endpoint. The effect animates only the Token placeable container and restores the native rendered scale after each trip; it does not change Token Document dimensions, texture sizing, or the Prototype Token.
 
 Transition visibility is manual. CTN does not apply Trigger states, automatic reveal logic, Saving Throws, damage, or post-trigger behavior to Transition Tiles.
 
@@ -531,9 +531,20 @@ CTN currently exposes world defaults for:
 - Navigation visibility
 - Trigger permission
 - Destination label display
+- Default CTN Asset Folder
 - Route Manager
 
+The **Default CTN Asset Folder** is selected through Foundry's native File Picker. CTN stores only the preferred source and folder path; it does not create folders, upload files, copy files, or manage an asset library. When a Trigger or Transition Tile image is browsed from its CTN configuration tab, the File Picker opens at that preferred folder when available.
+
 Creation defaults are copied into new Tiles. Existing Tiles remain individually editable.
+
+---
+
+# CTN Tile Configuration Tab
+
+Tiles created by CTN expose a dedicated **Canvas Tile Navigation** tab in Foundry's native Tile Configuration window. The tab is contextual: Navigation Links, One-Way Arrivals, Trigger Tiles, and Transition Tiles each show only the CTN controls relevant to that Tile type. Normal non-CTN Tiles do not receive this tab.
+
+Trigger and Transition Tiles also expose their native Tile image in this tab, with a Browse button that uses the configured Default CTN Asset Folder when available.
 
 ---
 

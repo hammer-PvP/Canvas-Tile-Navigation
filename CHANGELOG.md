@@ -2,6 +2,22 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.10
+
+### Added
+
+- Dedicated **Canvas Tile Navigation** tab in native Tile Configuration for CTN Tiles.
+- World-level Default CTN Asset Folder configuration using Foundry's native File Picker.
+- Tile image picker inside Trigger and Transition CTN tabs, opening from the configured default folder when available.
+
+### Fixed
+
+- Transition Effect now animates the Token placeable container instead of native TokenMesh texture scaling, preventing Token size growth after repeated trips.
+
+### Preserved
+
+- Navigation, Arrival, Trigger, Save, Damage, Group, Route Manager, and Transition travel rules are unchanged.
+
 ## 1.1.9
 
 ### Added

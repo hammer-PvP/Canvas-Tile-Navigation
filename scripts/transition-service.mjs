@@ -738,7 +738,24 @@ function transitionPlaceable(token) {
 }
 
 function scaleTarget(placeable) {
-  return placeable?.mesh ?? placeable;
+  // Animate the Token placeable container, never the Token mesh.
+  // TokenMesh.scale is part of Foundry's native texture/grid sizing and
+  // writing it back can compound the rendered Token size after refreshes.
+  return placeable ?? null;
+}
+
+function readScale(target) {
+  const x = Number(target?.scale?.x);
+  const y = Number(target?.scale?.y);
+  return {
+    x: Number.isFinite(x) ? x : 1,
+    y: Number.isFinite(y) ? y : 1
+  };
+}
+
+function usableBaseScale(scale) {
+  const tiny = (value) => Math.abs(Number(value) || 0) <= 0.01;
+  return (scale && !tiny(scale.x) && !tiny(scale.y)) ? scale : { x: 1, y: 1 };
 }
 
 function setScale(target, x, y) {
@@ -779,34 +796,38 @@ async function playTransitionEffect(tokenUuid, phase) {
   if (!target?.scale) return;
 
   const key = tokenUuid;
-  const current = { x: Number(target.scale.x) || 1, y: Number(target.scale.y) || 1 };
+  const current = readScale(target);
   let base = localEffectScales.get(key);
 
   if (phase === "out") {
-    base = current;
+    base = usableBaseScale(current);
     localEffectScales.set(key, base);
     await animateScale(target, base, { x: 0.001, y: 0.001 });
     return;
   }
 
   if (phase === "prepare") {
-    base = current;
+    base = usableBaseScale(current);
     localEffectScales.set(key, base);
     setScale(target, 0.001, 0.001);
     return;
   }
 
   if (phase === "in") {
-    base = base ?? current;
+    base = usableBaseScale(base ?? current);
     localEffectScales.set(key, base);
     setScale(target, 0.001, 0.001);
-    await animateScale(target, { x: 0.001, y: 0.001 }, base);
-    localEffectScales.delete(key);
+    try {
+      await animateScale(target, { x: 0.001, y: 0.001 }, base);
+    } finally {
+      setScale(target, base.x, base.y);
+      localEffectScales.delete(key);
+    }
     return;
   }
 
   if (phase === "restore") {
-    base = base ?? current;
+    base = usableBaseScale(base ?? current);
     setScale(target, base.x, base.y);
     localEffectScales.delete(key);
   }

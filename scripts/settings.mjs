@@ -8,10 +8,40 @@ import {
   LABEL_DISPLAY
 } from "./constants.mjs";
 import { RouteManagerApplication } from "./route-manager.mjs";
+import { AssetFolderSettingsApplication } from "./asset-folder.mjs";
 
 const choice = (key) => `CTN.Settings.Choices.${key}`;
 
 export function registerSettings() {
+  game.settings.register(MODULE_ID, "defaultAssetSource", {
+    name: "CTN.AssetFolder.Source",
+    hint: "CTN.AssetFolder.Hint",
+    scope: "world",
+    config: false,
+    restricted: true,
+    type: String,
+    default: "data"
+  });
+
+  game.settings.register(MODULE_ID, "defaultAssetFolder", {
+    name: "CTN.AssetFolder.Folder",
+    hint: "CTN.AssetFolder.Hint",
+    scope: "world",
+    config: false,
+    restricted: true,
+    type: String,
+    default: ""
+  });
+
+  game.settings.registerMenu(MODULE_ID, "assetFolder", {
+    name: "CTN.AssetFolder.MenuName",
+    label: "CTN.AssetFolder.MenuLabel",
+    hint: "CTN.AssetFolder.MenuHint",
+    icon: "fa-solid fa-folder-open",
+    type: AssetFolderSettingsApplication,
+    restricted: true
+  });
+
   game.settings.register(MODULE_ID, "defaultGesture", {
     name: "CTN.Settings.DefaultGesture.Name",
     hint: "CTN.Settings.DefaultGesture.Hint",

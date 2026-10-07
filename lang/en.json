@@ -246,5 +246,18 @@
   "CTN.Transition.PlayerTooFar": "Your character Token must be on or directly adjacent to this Transition Tile.",
   "CTN.Transition.DisconnectedNotification": "This Transition Tile is not connected yet.",
   "CTN.Transition.BrokenNotification": "This Transition Tile points to a missing or invalid partner.",
-  "CTN.Transition.Failed": "CTN could not complete the Transition. The source Token was kept when possible."
+  "CTN.Transition.Failed": "CTN could not complete the Transition. The source Token was kept when possible.",
+  "CTN.TileConfig.Tab": "Canvas Tile Navigation",
+  "CTN.AssetFolder.MenuName": "Default CTN Asset Folder",
+  "CTN.AssetFolder.MenuLabel": "Configure Asset Folder",
+  "CTN.AssetFolder.MenuHint": "Choose the default folder used when browsing for custom CTN Tile images.",
+  "CTN.AssetFolder.Title": "Canvas Tile Navigation — Asset Folder",
+  "CTN.AssetFolder.Hint": "CTN does not upload, move, copy, or manage files. Choose any folder that Foundry allows you to browse. The native File Picker remains responsible for file access and uploads.",
+  "CTN.AssetFolder.Source": "File Source",
+  "CTN.AssetFolder.Folder": "Default Asset Folder",
+  "CTN.AssetFolder.Browse": "Choose Folder",
+  "CTN.AssetFolder.Clear": "Clear / Use Foundry Default",
+  "CTN.AssetFolder.TileImage": "Tile Image",
+  "CTN.AssetFolder.BrowseImage": "Browse Tile Image",
+  "CTN.AssetFolder.TileImageHint": "Browse uses the configured Default CTN Asset Folder when available. The selected image is still the native Foundry Tile texture."
 }

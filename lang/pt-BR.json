@@ -246,5 +246,18 @@
   "CTN.Transition.PlayerTooFar": "O Token do seu personagem precisa estar sobre ou diretamente adjacente a este Transition Tile.",
   "CTN.Transition.DisconnectedNotification": "Este Transition Tile ainda não está conectado.",
   "CTN.Transition.BrokenNotification": "Este Transition Tile aponta para um parceiro ausente ou inválido.",
-  "CTN.Transition.Failed": "O CTN não conseguiu concluir a transição. O Token de origem foi mantido quando possível."
+  "CTN.Transition.Failed": "O CTN não conseguiu concluir a transição. O Token de origem foi mantido quando possível.",
+  "CTN.TileConfig.Tab": "Canvas Tile Navigation",
+  "CTN.AssetFolder.MenuName": "Pasta padrão de assets do CTN",
+  "CTN.AssetFolder.MenuLabel": "Configurar pasta de assets",
+  "CTN.AssetFolder.MenuHint": "Escolha a pasta padrão usada ao procurar imagens personalizadas para Tiles CTN.",
+  "CTN.AssetFolder.Title": "Canvas Tile Navigation — Pasta de Assets",
+  "CTN.AssetFolder.Hint": "O CTN não envia, move, copia ou gerencia arquivos. Escolha qualquer pasta que o Foundry permita acessar. O File Picker nativo continua responsável pelo acesso e pelos uploads.",
+  "CTN.AssetFolder.Source": "Origem de arquivos",
+  "CTN.AssetFolder.Folder": "Pasta padrão de assets",
+  "CTN.AssetFolder.Browse": "Escolher pasta",
+  "CTN.AssetFolder.Clear": "Limpar / Usar padrão do Foundry",
+  "CTN.AssetFolder.TileImage": "Imagem do Tile",
+  "CTN.AssetFolder.BrowseImage": "Procurar imagem do Tile",
+  "CTN.AssetFolder.TileImageHint": "O seletor abre na Pasta padrão de assets do CTN quando ela estiver configurada. A imagem selecionada continua sendo a textura nativa do Tile do Foundry."
 }
