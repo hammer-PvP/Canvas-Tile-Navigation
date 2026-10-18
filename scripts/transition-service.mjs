@@ -571,7 +571,9 @@ function firstCrossedTransition(token, movement) {
   for (const tile of [...(token?.parent?.tiles ?? [])].filter(isTransitionTile)) {
     const data = transitionData(tile);
     if (data?.activation !== TRANSITION_ACTIVATIONS.ENTER) continue;
-    if (!game.user?.isGM && tile.hidden) continue;
+    // Hidden Transition Tiles must still function for Enter Area.
+    // Visibility only blocks pointer-based activation because there is
+    // nothing visible for the player to click.
     if (transitionStatus(tile) !== TRANSITION_STATUS.CONNECTED) continue;
     const entry = firstEntryOnMovement(token, tile, movement);
     if (!entry) continue;
@@ -867,7 +869,7 @@ function validateAuthorityRequest({ sourceTile, sourceToken, requester, method }
   if (transitionStatus(sourceTile) !== TRANSITION_STATUS.CONNECTED) return false;
   if (!requester || !sourceToken || sourceToken.parent?.id !== sourceTile.parent?.id) return false;
   if (!requester.isGM) {
-    if (sourceTile.hidden) return false;
+    if (sourceTile.hidden && method !== TRANSITION_ACTIVATIONS.ENTER) return false;
     const actor = getUserActor(requester);
     const sourceActor = tokenActor(sourceToken);
     if (!actor || !sourceActor || actor.id !== sourceActor.id) return false;

@@ -2,6 +2,13 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.11
+
+### Fixed
+
+- Hidden **Transition Tiles** configured with **Enter Area** once again trigger correctly for player-controlled Tokens.
+- Hidden visibility still blocks player **Single Click** and **Double Click** activation, but no longer blocks movement-based activation.
+
 ## 1.1.10
 
 ### Added
