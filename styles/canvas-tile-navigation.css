@@ -299,16 +299,46 @@
 .ctn-fx-config .ctn-fx-file button { flex: 0 0 2.2rem; min-width: 2.2rem; }
 .ctn-fx-config .ctn-fx-units { white-space: nowrap; font-size: .78rem; }
 .ctn-fx-separator { opacity: .35; margin: .6rem 0; }
-.ctn-fx-browser { width: min(700px, 90vw); max-height: 76vh; padding: 1rem; border-radius: 7px;
-  background: var(--color-cool-5, #26282d); color: var(--color-text-light-primary, #eee);
-  border: 1px solid var(--color-border-light-tertiary, #888); }
-.ctn-fx-browser::backdrop { background: rgba(0,0,0,.55); }
+.ctn-fx-browser { width: min(1020px, 94vw); max-width: 94vw; max-height: 82vh;
+  padding: 1rem; border-radius: 8px; background: var(--color-cool-5, #26282d);
+  color: var(--color-text-light-primary, #eee); border: 1px solid var(--color-border-light-tertiary, #888); }
+.ctn-fx-browser::backdrop { background: rgba(0,0,0,.66); }
+.ctn-fx-browser__layout { display: grid; grid-template-columns: minmax(270px, 1fr) minmax(310px, 1.1fr);
+  gap: .9rem; min-height: 350px; }
 .ctn-fx-browser header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .6rem; }
 .ctn-fx-browser header button { width: 2rem; min-width: 2rem; }
 .ctn-fx-browser input { display: block; width: 100%; margin: .35rem 0; }
-.ctn-fx-results { display: flex; flex-direction: column; gap: .25rem; overflow-y: auto; max-height: 52vh; }
+.ctn-fx-browser__list, .ctn-fx-browser__preview { min-width: 0; }
+.ctn-fx-results { display: flex; flex-direction: column; gap: .2rem; overflow-y: auto; max-height: min(53vh, 550px); }
 .ctn-fx-results button { text-align: left; font-family: monospace; font-size: .78rem; flex: none;
   overflow-wrap: anywhere; height: auto; min-height: 2rem; padding: .35rem; }
+.ctn-fx-results button.selected { outline: 2px solid #f0bc6a; outline-offset: -2px;
+  background: rgba(240,188,106,.14); }
+.ctn-fx-browser__preview { display: flex; flex-direction: column; gap: .7rem; }
+.ctn-fx-browser__media { flex: 1; min-height: 260px; background: #101015; border: 1px solid #555;
+  display: flex; justify-content: center; align-items: center; border-radius: 5px; }
+.ctn-fx-browser__media video, .ctn-fx-browser__media img { width: 100%; height: 100%;
+  max-height: 52vh; object-fit: contain; }
+.ctn-fx-browser__media [hidden] { display: none !important; }
+.ctn-fx-browser__media p { padding: .75rem; text-align: center; }
+.ctn-fx-browser__path { font-family: monospace; font-size: .77rem; overflow-wrap: anywhere;
+  margin: .15rem 0; color: var(--color-text-light-secondary, #c8c8c8); }
+.ctn-fx-browser footer { display: flex; justify-content: flex-end; gap: .5rem; margin-top: auto; }
+.ctn-fx-browser footer button { flex: 0 1 auto; min-width: 6rem; }
+.ctn-fx-canvas-toolbar { position: fixed; z-index: 100000; right: 1.25rem; top: 5rem;
+  padding: .8rem 1rem; width: min(335px, calc(100vw - 2.5rem)); border-radius: 7px;
+  border: 1px solid #6685ad; background: rgba(24, 30, 39, .95); color: #f8f9fa;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5); pointer-events: auto; }
+.ctn-fx-canvas-toolbar p { margin: .45rem 0; font-size: .83rem; }
+.ctn-fx-canvas-toolbar output { display: block; margin: .6rem 0; font-size: .86rem;
+  font-variant-numeric: tabular-nums; }
+.ctn-fx-canvas-toolbar__actions { display: flex; gap: .5rem; }
+.ctn-fx-canvas-toolbar button { flex: 1 1 0; }
+@media (max-width: 720px) {
+  .ctn-fx-browser__layout { grid-template-columns: 1fr; }
+  .ctn-fx-browser__media { min-height: 190px; }
+  .ctn-fx-results { max-height: 25vh; }
+}
 
 /* Trigger Tile optional sections: hidden means inactive visually; preferences
    stay in the form so toggling a feature never wipes its configuration. */

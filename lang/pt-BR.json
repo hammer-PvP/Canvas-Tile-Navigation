@@ -294,7 +294,7 @@
   "CTN.FX.GridUnits": "células de grid",
   "CTN.FX.CanvasEditor": "Editor no canvas",
   "CTN.FX.EditCanvas": "Editar posição / tamanho na Scene",
-  "CTN.FX.CanvasHint": "Clique/arraste para posicionar; arraste o canto inferior direito para redimensionar. Esc cancela. Salve a configuração do Tile para confirmar.",
+  "CTN.FX.CanvasHint": "Arraste dentro do retângulo azul para mover; arraste qualquer canto para ajustar largura e altura. Aplicar ou Enter confirma; Cancelar ou Esc descarta. Depois salve a configuração do Tile.",
   "CTN.FX.Lifetime": "Duração / permanência",
   "CTN.FX.Natural": "Duração natural da animação",
   "CTN.FX.FixedSeconds": "Duração fixa",
@@ -316,5 +316,12 @@
   "CTN.FX.NoEffects": "Nenhum caminho JB2A encontrado. Verifique se Sequencer e JB2A estão instalados e ativos.",
   "CTN.FX.Search": "Pesquisar efeitos instalados…",
   "CTN.FX.Results": "efeitos encontrados",
-  "CTN.FX.OpenSceneFirst": "Abra a Scene do Tile antes de editar o FX no canvas."
+  "CTN.FX.OpenSceneFirst": "Abra a Scene do Tile antes de editar o FX no canvas.",
+  "CTN.FX.CanvasEditInstructions": "Arraste dentro para mover e pelos cantos para redimensionar. Aplicar (Enter) ou Cancelar (Esc).",
+  "CTN.FX.ApplyEditor": "Aplicar",
+  "CTN.FX.CancelEditor": "Cancelar",
+  "CTN.FX.ChoosePreview": "Selecione um efeito instalado para visualizar a animação.",
+  "CTN.FX.LoadingPreview": "Carregando animação…",
+  "CTN.FX.PreviewUnavailable": "Prévia indisponível neste item. Ainda é possível selecioná-lo e testar localmente na Scene.",
+  "CTN.FX.ConfirmEffect": "Usar efeito selecionado"
 }

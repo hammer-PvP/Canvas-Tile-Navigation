@@ -294,7 +294,7 @@
   "CTN.FX.GridUnits": "grid units",
   "CTN.FX.CanvasEditor": "Canvas Editor",
   "CTN.FX.EditCanvas": "Edit Position / Size on Canvas",
-  "CTN.FX.CanvasHint": "Click / drag to position; drag the lower-right corner to resize. Esc cancels. Save Tile Configuration to commit.",
+  "CTN.FX.CanvasHint": "Drag inside the blue rectangle to move; drag any corner to resize independently. Apply or Enter confirms; Cancel or Esc discards. Save Tile Configuration afterwards.",
   "CTN.FX.Lifetime": "Duration / Lifetime",
   "CTN.FX.Natural": "Natural Animation Duration",
   "CTN.FX.FixedSeconds": "Fixed Duration",
@@ -316,5 +316,12 @@
   "CTN.FX.NoEffects": "No JB2A paths were found. Check Sequencer and JB2A are installed and active.",
   "CTN.FX.Search": "Search installed effects…",
   "CTN.FX.Results": "matching effects",
-  "CTN.FX.OpenSceneFirst": "Open the Tile’s Scene before editing its FX on the canvas."
+  "CTN.FX.OpenSceneFirst": "Open the Tile’s Scene before editing its FX on the canvas.",
+  "CTN.FX.CanvasEditInstructions": "Drag inside to move; drag any corner to resize width and height. Apply (Enter) or Cancel (Esc).",
+  "CTN.FX.ApplyEditor": "Apply",
+  "CTN.FX.CancelEditor": "Cancel",
+  "CTN.FX.ChoosePreview": "Select an installed effect to preview it.",
+  "CTN.FX.LoadingPreview": "Loading animation…",
+  "CTN.FX.PreviewUnavailable": "Preview unavailable for this entry. It can still be selected and tested locally on the Scene.",
+  "CTN.FX.ConfirmEffect": "Use Selected Effect"
 }

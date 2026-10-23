@@ -11,10 +11,14 @@ import { tileBounds, tokenBounds } from "./token-service.mjs";
 const FLAG = "visualFX";
 const SEQ_FX_EVENT = "ctnVisualFXEvent";
 const MAX_DURATION_S = 3600;
+const INITIAL_OCCUPANCY_GRACE_MS = 1000; // Trigger detection can precede a paused/committed movement
+const OCCUPANCY_POLL_MS = 300;
+const REMOTE_ACK_TIMEOUT_MS = 3500;
 const ACTIVE = new Map(); // tileUuid -> Map(effectName -> record), GM authority only
 const ENDING = new Set();
 const LAST_EVENTS = new Map();
 let pickerSession = null;
+let occupancyPoll = null;
 let databaseCache = null;
 let databaseCacheInstance = null;
 
@@ -112,6 +116,23 @@ function recordsFor(tile) {
   if (!ACTIVE.has(tile.uuid)) ACTIVE.set(tile.uuid, new Map());
   return ACTIVE.get(tile.uuid);
 }
+function forgetRecord(tile, name) {
+  const records = ACTIVE.get(tile.uuid);
+  const record = records?.get(name);
+  if (record?.timer) clearTimeout(record.timer);
+  records?.delete(name);
+  if (records && !records.size) ACTIVE.delete(tile.uuid);
+}
+function scheduleRemoteTimeout(tile, name) {
+  const record = ACTIVE.get(tile.uuid)?.get(name);
+  if (!record) return;
+  record.timer = setTimeout(() => {
+    if (!record.acknowledged) {
+      console.warn(`${MODULE_ID} | Remote Visual FX was not acknowledged: ${name}`);
+      forgetRecord(tile, name);
+    }
+  }, REMOTE_ACK_TIMEOUT_MS);
+}
 function tokenInTile(token, tile) {
   if (!token || token.parent?.id !== tile.parent?.id) return false;
   const rect = tokenBounds(token);
@@ -139,16 +160,22 @@ async function terminate(tile, name, record, immediate = false) {
     // The fadeOut configured on a persistent Sequencer effect plays during
     // EffectManager.endEffects; no CTN animation or Token scaling is involved.
     await globalThis.Sequencer?.EffectManager?.endEffects?.({ name, origin: tile.uuid, sceneId: tile.parent.id });
+    if (record.runnerId && record.runnerId !== game.user.id) {
+      game.socket.emit(SOCKET_NAME, {
+        type: "ctn-visual-fx-remote-end", senderId: game.user.id,
+        targetUserId: record.runnerId, tileUuid: tile.uuid, name
+      });
+    }
   } catch (error) {
     console.warn(`${MODULE_ID} | Could not end Visual FX ${name}`, error);
   } finally {
-    recordsFor(tile).delete(name);
+    forgetRecord(tile, name);
     ENDING.delete(name);
   }
 }
 export async function stopTileFX(tile, { clear = false } = {}) {
   if (!isAuthority() || !tile) return;
-  const records = recordsFor(tile);
+  const records = ACTIVE.get(tile.uuid) ?? new Map();
   await Promise.all([...records].map(([name, record]) => terminate(tile, name, record)));
   // Also catch Sequencer-persisted effects restored after CTN/world reload.
   try {
@@ -185,7 +212,9 @@ async function executeSequence(tile, cfg, name, { preview = false } = {}) {
       section = section.duration(Math.round(cfg.seconds * 1000));
       if (cfg.endMode === "fade" && cfg.fadeOut > 0) section = section.fadeOut(Math.round(Math.min(cfg.fadeOut, cfg.seconds) * 1000));
     } else {
-      section = section.persist();
+      // Persist holds ownership; loops: 0 replays full finite assets as well
+      // as JB2A assets with internal loop markers, until CTN ends the effect.
+      section = section.persist().loopOptions({ loops: 0 });
       if (cfg.endMode === "fade" && cfg.fadeOut > 0) {
         section = section.fadeOut(Math.round(cfg.fadeOut * 1000))
           .extraEndDuration(Math.round(cfg.fadeOut * 1000));
@@ -198,7 +227,7 @@ function remoteRunner(sceneId) {
   // If the GM is viewing a different Scene, a player with that Scene loaded
   // can originate the Sequencer effect, which Sequencer then synchronizes.
   return [...game.users]
-    .filter((u) => u.active && !u.isGM && u.viewedScene === sceneId)
+    .filter((u) => u.active && u.id !== game.user.id && u.viewedScene === sceneId)
     .sort((a,b) => a.id.localeCompare(b.id))[0] ?? null;
 }
 
@@ -208,49 +237,53 @@ export async function playTileFX(tile, { event, tokenUuid = "", preview = false,
   const cfg = override ?? fxConfig(tile);
   if (!preview && (!cfg.enabled || cfg.event !== event)) return false;
   if (!cfg.effect || !jb2aPaths().includes(cfg.effect)) return false;
-  const records = recordsFor(tile);
+  const records = preview ? null : recordsFor(tile);
   if (!preview && cfg.repeat === "one" && records.size) return false;
   const name = preview ? `ctn-preview-${foundry.utils.randomID()}` : effectName(tile);
-  if (!preview) records.set(name, { lifetime: cfg.lifetime, tokenUuid, timer: null });
+  const now = Date.now();
+  if (!preview) records.set(name, {
+    lifetime: cfg.lifetime, tokenUuid, runnerId: null, timer: null,
+    startedAt: now, graceUntil: now + INITIAL_OCCUPANCY_GRACE_MS,
+    acknowledged: false,
+    maxRuntimeMs: cfg.lifetime === FX_LIFETIMES.SECONDS
+      ? cfg.seconds * 1000 + 5000 : cfg.lifetime === FX_LIFETIMES.NATURAL ? 60000 : 0
+  });
   try {
     const remote = !preview && canvas?.scene?.id !== tile.parent.id
       ? remoteRunner(tile.parent.id) : null;
     if (remote) {
+      const record = records.get(name);
+      record.runnerId = remote.id;
+      scheduleRemoteTimeout(tile, name);
       game.socket.emit(SOCKET_NAME, {
         type: "ctn-visual-fx-remote-play", senderId: game.user.id,
-        targetUserId: remote.id, tileUuid: tile.uuid, cfg, name
+        targetUserId: remote.id, tileUuid: tile.uuid, name
       });
-      if ([FX_LIFETIMES.NATURAL, FX_LIFETIMES.SECONDS].includes(cfg.lifetime)) {
-        // Sequencer plays on the remote client; time-bound dedupe is enough here.
-        const holdMs = cfg.lifetime === FX_LIFETIMES.SECONDS ? cfg.seconds * 1000 + 500 : 10000;
-        const record = records.get(name);
-        if (record) record.timer = setTimeout(() => records.delete(name), holdMs);
-      }
     } else if (!preview && canvas?.scene?.id !== tile.parent.id) {
-      // Nobody has the target Scene ready: defer rather than drawing the FX
-      // at identical coordinates in the GM's unrelated Scene.
-      records.delete(name);
+      // No client with this scene loaded; never draw on the wrong scene.
+      forgetRecord(tile, name);
       return false;
     } else {
+      // Do not await the lifetime of a persistent effect. A Sequence's play()
+      // promise can stay unresolved until the effect has ended.
       void executeSequence(tile, cfg, name, { preview }).then(() => {
         if (!preview && [FX_LIFETIMES.NATURAL, FX_LIFETIMES.SECONDS].includes(cfg.lifetime)) {
-          records.delete(name);
+          forgetRecord(tile, name);
         }
       }).catch((error) => {
         console.error(`${MODULE_ID} | Visual FX failed`, error);
-        records.delete(name);
+        if (!preview) forgetRecord(tile, name);
       });
     }
+    // No token exists for navigation/arrival events. TOKEN lifetime with no
+    // activating token is a short activation FX, not a permanent orphan.
     if (!preview && cfg.lifetime === FX_LIFETIMES.TOKEN && !tokenUuid) {
-      setTimeout(() => void expire(tile, name), 350);
-    }
-    if (!preview && [FX_LIFETIMES.TOKEN, FX_LIFETIMES.AREA].includes(cfg.lifetime)) {
-      // Entry may precede the authoritative Token position update by one tick.
-      setTimeout(() => checkLifetimeForTile(tile), 350);
+      const record = records.get(name);
+      if (record) record.timer = setTimeout(() => void expire(tile, name), INITIAL_OCCUPANCY_GRACE_MS);
     }
     return true;
   } catch (error) {
-    records.delete(name);
+    forgetRecord(tile, name);
     console.warn(`${MODULE_ID} | Visual FX activation failed`, error);
     return false;
   }
@@ -260,7 +293,9 @@ function checkLifetimeForTile(tile) {
   if (!isAuthority()) return;
   const records = ACTIVE.get(tile.uuid);
   if (!records?.size) return;
+  const now = Date.now();
   for (const [name, record] of records) {
+    if (ENDING.has(name) || now < record.graceUntil) continue;
     if (record.lifetime === FX_LIFETIMES.TOKEN) {
       const token = lookupToken(record.tokenUuid);
       if (!tokenInTile(token, tile)) void expire(tile, name);
@@ -283,7 +318,7 @@ export function fireTileFXEvent(tile, event, token = null) {
   // Coalesce duplicate parallel hooks, not distinct users.
   const key = `${tile.uuid}/${event}/${token?.uuid ?? ""}`;
   const now = Date.now();
-  if ((LAST_EVENTS.get(key) ?? 0) + 100 < now) {
+  if ((LAST_EVENTS.get(key) ?? 0) + 40 < now) {
     LAST_EVENTS.set(key, now);
     void playTileFX(tile, { event, tokenUuid: token?.uuid ?? "" });
   }
@@ -293,7 +328,11 @@ function onTileUpdate(tile, changes) {
   if (!isAuthority()) return;
   const cfgChanges = Object.keys(changes).some((k) => k.includes("visualFX"))
     || Boolean(changes.flags?.[MODULE_ID]?.visualFX);
-  if (cfgChanges && !fxConfig(tile).enabled) void stopTileFX(tile);
+  if (cfgChanges) {
+    // A new effect/position/duration replaces the previous occurrence. Old
+    // effect names must not survive after saving a changed configuration.
+    void stopTileFX(tile);
+  }
   if (isTriggerTile(tile)) {
     const state = tile.getFlag(MODULE_ID, "trigger")?.state;
     // Reset, disable or rearm end active FX rather than silently carrying it.
@@ -318,22 +357,73 @@ export function registerVisualFXHooks() {
   Hooks.on("deleteToken", (token) => checkLifetimesForScene(token.parent));
   Hooks.on("updateTile", onTileUpdate);
   Hooks.on("deleteTile", (tile) => void stopTileFX(tile, { clear: true }));
+  // A committed movement update is not guaranteed for a paused Trigger, and
+  // updates are not guaranteed when a GM is viewing another Scene. Poll only
+  // while there are active conditional FX and let each record's grace settle.
+  occupancyPoll = setInterval(() => {
+    if (!isAuthority()) return;
+    for (const uuid of [...ACTIVE.keys()]) {
+      const tile = resolveTile(uuid);
+      if (tile) checkLifetimeForTile(tile);
+      else ACTIVE.delete(uuid);
+    }
+  }, OCCUPANCY_POLL_MS);
   Hooks.on("canvasReady", () => {
-    // Sequencer handles persistence/reload; CTN only refreshes occupancy logic.
     if (canvas?.scene) checkLifetimesForScene(canvas.scene);
   });
+  Hooks.on("canvasTearDown", () => { if (pickerSession) cancelPicker(); });
   Hooks.once("ready", () => {
     game.socket.on(SOCKET_NAME, (message) => {
-      if (message?.type !== "ctn-visual-fx-remote-play" || message.targetUserId !== game.user.id) return;
-      if (primaryGM()?.id !== message.senderId) return;
+      if (!message || !message.type?.startsWith("ctn-visual-fx-")) return;
+      if (message.type === "ctn-visual-fx-remote-ack") {
+        if (!isAuthority() || message.targetUserId !== game.user.id) return;
+        const tile = resolveTile(message.tileUuid);
+        const record = tile && ACTIVE.get(tile.uuid)?.get(message.name);
+        if (!record || record.runnerId !== message.senderId) return;
+        if (message.status === "ended") {
+          if ([FX_LIFETIMES.NATURAL, FX_LIFETIMES.SECONDS].includes(record.lifetime)) forgetRecord(tile, message.name);
+          return;
+        }
+        if (record.timer) clearTimeout(record.timer);
+        record.timer = null;
+        record.acknowledged = message.status === "started";
+        if (!record.acknowledged) forgetRecord(tile, message.name);
+        else if (record.maxRuntimeMs > 0) {
+          // Completion ACK is preferred; this fallback prevents stale dedupe
+          // locks when a remote client closes mid-animation.
+          record.timer = setTimeout(() => forgetRecord(tile, message.name), record.maxRuntimeMs);
+        }
+        return;
+      }
+      if (message.targetUserId !== game.user.id || primaryGM()?.id !== message.senderId) return;
       const tile = resolveTile(message.tileUuid);
       if (!tile || canvas?.scene?.id !== tile.parent?.id || !isSequencerAvailable()) return;
-      const cfg = fxConfig(tile);
-      if (!cfg.enabled || !cfg.effect || !jb2aPaths().includes(cfg.effect)) return;
-      // Use the saved/authoritative Tile configuration, not arbitrary socket FX values.
-      void executeSequence(tile, cfg, message.name).catch((error) => {
-        console.warn(`${MODULE_ID} | Remote Visual FX failed`, error);
+      const acknowledge = (status) => game.socket.emit(SOCKET_NAME, {
+        type: "ctn-visual-fx-remote-ack", senderId: game.user.id,
+        targetUserId: message.senderId, tileUuid: tile.uuid, name: message.name, status
       });
+      if (message.type === "ctn-visual-fx-remote-end") {
+        void globalThis.Sequencer.EffectManager.endEffects({
+          name: message.name, origin: tile.uuid, sceneId: tile.parent.id
+        });
+        return;
+      }
+      if (message.type !== "ctn-visual-fx-remote-play") return;
+      const cfg = fxConfig(tile);
+      if (!cfg.enabled || !cfg.effect || !jb2aPaths().includes(cfg.effect)) {
+        acknowledge("failed"); return;
+      }
+      try {
+        const running = executeSequence(tile, cfg, message.name);
+        acknowledge("started");
+        void running.then(() => acknowledge("ended")).catch((error) => {
+          console.warn(`${MODULE_ID} | Remote Visual FX failed`, error);
+          acknowledge("failed");
+        });
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Remote Visual FX failed`, error);
+        acknowledge("failed");
+      }
     });
     if (!isSequencerAvailable()) console.info(`${MODULE_ID} | Visual FX is optional; Sequencer unavailable`);
   });
@@ -343,39 +433,64 @@ export function emitVisualFX(tile, event, token = null) {
   Hooks.callAll(SEQ_FX_EVENT, { tile, event, token });
 }
 
-// Canvas preview/editor. Temporary PIXI markup is NEVER persisted as a Tile.
+// GM-only Canvas editor. The rectangle is a visual FX footprint, never a Tile
+// hitbox. Editing is a SESSION: multiple moves/resizes, then Apply or Cancel.
 function destroyPicker() {
   if (!pickerSession) return;
   const p = pickerSession;
   p.canvasElement.removeEventListener("pointerdown", p.down, true);
-  p.canvasElement.removeEventListener("pointermove", p.move, true);
-  p.canvasElement.removeEventListener("pointerup", p.up, true);
-  window.removeEventListener("keydown", p.escape);
+  window.removeEventListener("pointermove", p.move, true);
+  window.removeEventListener("pointerup", p.up, true);
+  window.removeEventListener("keydown", p.keydown, true);
+  p.toolbar?.remove();
   p.graphics?.destroy?.();
   pickerSession = null;
 }
-function canvasPoint(ev) { return canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY }); }
+function cancelPicker() {
+  const cancel = pickerSession?.onCancel;
+  destroyPicker();
+  cancel?.();
+}
+function canvasPoint(ev) {
+  return canvas.canvasCoordinatesFromClient({ x: ev.clientX, y: ev.clientY });
+}
+function pickerBounds(state) {
+  const grid = Number(canvas.scene?.grid?.size) || 100;
+  const width = state.width * grid;
+  const height = state.height * grid;
+  return { left: state.x - width / 2, top: state.y - height / 2,
+    right: state.x + width / 2, bottom: state.y + height / 2 };
+}
+function pickerCorners(b) {
+  return { nw: { x: b.left, y: b.top }, ne: { x: b.right, y: b.top },
+    sw: { x: b.left, y: b.bottom }, se: { x: b.right, y: b.bottom } };
+}
+const OPPOSITE_CORNER = { nw: "se", ne: "sw", sw: "ne", se: "nw" };
 function pickerRender(session) {
   const { graphics: g, state } = session;
-  const gridSize = Number(canvas.scene?.grid?.size) || 100;
-  const width = state.width * gridSize;
-  const height = state.height * gridSize;
-  const x = state.x - width / 2;
-  const y = state.y - height / 2;
+  const b = pickerBounds(state);
+  const corners = pickerCorners(b);
+  const zoom = Math.max(0.05, Math.abs(canvas.stage?.scale?.x ?? 1));
+  const radius = 7 / zoom;
   g.clear();
-  // Foundry V14 uses PixiJS v8: rect/fill/stroke, not v7 drawRect/lineStyle.
-  g.rect(x, y, width, height)
-    .fill({ color: 0x64B5F6, alpha: 0.12 })
-    .stroke({ color: 0x64B5F6, width: 3, alpha: 0.95 });
-  g.rect(x + width - 9, y + height - 9, 18, 18)
-    .fill({ color: 0xFFCC80, alpha: 0.85 })
-    .stroke({ color: 0xFFCC80, width: 2 });
-  g.circle(state.x, state.y, 4).fill(0x64B5F6);
+  g.rect(b.left, b.top, b.right - b.left, b.bottom - b.top)
+    .fill({ color: 0x64B5F6, alpha: 0.13 })
+    .stroke({ color: 0x64B5F6, width: 2 / zoom, alpha: 1 });
+  for (const c of Object.values(corners)) {
+    g.rect(c.x - radius, c.y - radius, radius * 2, radius * 2)
+      .fill({ color: 0xFFCC80, alpha: 0.98 })
+      .stroke({ color: 0x15283A, width: 1.5 / zoom });
+  }
+  g.circle(state.x, state.y, Math.max(2, 3 / zoom)).fill(0x64B5F6);
+  session.dimensions.textContent = `${state.width.toFixed(2)} × ${state.height.toFixed(2)} ${session.unitLabel}`;
 }
-/** Uses raw canvas capture so GM can drag the FX box without moving Scene Tiles. */
+/**
+ * Resize corners are screen-constant-size, and drag is independent of the
+ * pointer release. Enter/Apply commits; Escape/Cancel rolls back everything.
+ */
 export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
   if (!game.user?.isGM || canvas?.scene?.id !== tile?.parent?.id || !canvas?.ready) return false;
-  destroyPicker();
+  cancelPicker();
   const canvasElement = canvas.app?.canvas ?? canvas.app?.view;
   if (!(canvasElement instanceof HTMLCanvasElement)) return false;
   const graphics = new PIXI.Graphics();
@@ -383,47 +498,83 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
   canvas.stage.addChild(graphics);
   const center = fxCenter(tile, cfg);
   const state = { x: center.x, y: center.y, width: cfg.width, height: cfg.height };
-  const session = { canvasElement, graphics, state, drag: null };
-  pickerSession = session;
-  const bounds = () => {
-    const gridSize = Number(canvas.scene?.grid?.size) || 100;
-    return { left: state.x - state.width * gridSize / 2, top: state.y - state.height * gridSize / 2,
-      right: state.x + state.width * gridSize / 2, bottom: state.y + state.height * gridSize / 2 };
+  const unitLabel = game.i18n.localize("CTN.FX.GridUnits");
+  const toolbar = document.createElement("aside");
+  toolbar.className = "ctn-fx-canvas-toolbar";
+  toolbar.innerHTML = `<strong>${foundry.utils.escapeHTML(game.i18n.localize("CTN.FX.CanvasEditor"))}</strong>
+    <p>${foundry.utils.escapeHTML(game.i18n.localize("CTN.FX.CanvasEditInstructions"))}</p>
+    <output data-ctn-fx-dimensions></output>
+    <div class="ctn-fx-canvas-toolbar__actions">
+      <button type="button" data-ctn-fx-apply>${foundry.utils.escapeHTML(game.i18n.localize("CTN.FX.ApplyEditor"))}</button>
+      <button type="button" data-ctn-fx-cancel>${foundry.utils.escapeHTML(game.i18n.localize("CTN.FX.CancelEditor"))}</button>
+    </div>`;
+  document.body.append(toolbar);
+  const session = {
+    canvasElement, graphics, state, toolbar, unitLabel, onCancel,
+    dimensions: toolbar.querySelector("[data-ctn-fx-dimensions]"), drag: null
   };
+  pickerSession = session;
+  const finish = () => {
+    const result = { ...state };
+    destroyPicker();
+    callback(result);
+  };
+  toolbar.querySelector("[data-ctn-fx-apply]").addEventListener("click", finish);
+  toolbar.querySelector("[data-ctn-fx-cancel]").addEventListener("click", cancelPicker);
   session.down = (ev) => {
-    if (ev.button !== 0) return;
+    if (ev.button !== 0 || pickerSession !== session) return;
     const point = canvasPoint(ev);
-    const b = bounds();
-    session.drag = Math.abs(point.x - b.right) < 35 && Math.abs(point.y - b.bottom) < 35 ? "resize" : "move";
+    const b = pickerBounds(state);
+    const corners = pickerCorners(b);
+    const zoom = Math.max(0.05, Math.abs(canvas.stage?.scale?.x ?? 1));
+    const radius = 19 / zoom;
+    const corner = Object.keys(corners).find((key) =>
+      Math.hypot(point.x - corners[key].x, point.y - corners[key].y) <= radius);
+    if (corner) {
+      const anchor = corners[OPPOSITE_CORNER[corner]];
+      session.drag = { kind: "resize", anchor };
+    } else if (point.x >= b.left && point.x <= b.right && point.y >= b.top && point.y <= b.bottom) {
+      session.drag = { kind: "move", offsetX: state.x - point.x, offsetY: state.y - point.y };
+    } else return; // Do not intercept ordinary canvas interactions outside FX area.
     ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-    if (session.drag === "move") { state.x = point.x; state.y = point.y; }
-    pickerRender(session);
   };
   session.move = (ev) => {
-    if (!session.drag) return;
+    if (!session.drag || pickerSession !== session) return;
     const point = canvasPoint(ev);
-    const grid = Number(canvas.scene?.grid?.size) || 100;
-    if (session.drag === "move") { state.x = point.x; state.y = point.y; }
-    else {
-      state.width = n(Math.abs(point.x - (state.x - state.width * grid / 2)) / grid, state.width, 0.1, 100);
-      state.height = n(Math.abs(point.y - (state.y - state.height * grid / 2)) / grid, state.height, 0.1, 100);
+    if (session.drag.kind === "move") {
+      state.x = point.x + session.drag.offsetX;
+      state.y = point.y + session.drag.offsetY;
+    } else {
+      const anchor = session.drag.anchor;
+      const grid = Number(canvas.scene?.grid?.size) || 100;
+      const dx = point.x - anchor.x;
+      const dy = point.y - anchor.y;
+      const widthPx = n(Math.abs(dx) / grid, state.width, 0.1, 100) * grid;
+      const heightPx = n(Math.abs(dy) / grid, state.height, 0.1, 100) * grid;
+      const directionX = dx < 0 ? -1 : 1;
+      const directionY = dy < 0 ? -1 : 1;
+      state.x = anchor.x + directionX * widthPx / 2;
+      state.y = anchor.y + directionY * heightPx / 2;
+      state.width = widthPx / grid;
+      state.height = heightPx / grid;
     }
-    ev.preventDefault(); ev.stopPropagation(); pickerRender(session);
+    ev.preventDefault(); ev.stopPropagation();
+    pickerRender(session);
   };
   session.up = (ev) => {
     if (!session.drag) return;
-    ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
-    session.drag = null;
-    destroyPicker();
-    callback({ ...state });
+    session.move(ev); // final position even if no final move event
+    session.drag = null; // do NOT close the editor after the first action
+    ev.preventDefault(); ev.stopPropagation();
   };
-  session.escape = (ev) => {
-    if (ev.key === "Escape") { ev.preventDefault(); destroyPicker(); onCancel?.(); }
+  session.keydown = (ev) => {
+    if (ev.key === "Escape") { ev.preventDefault(); cancelPicker(); }
+    else if (ev.key === "Enter" && !ev.repeat) { ev.preventDefault(); finish(); }
   };
   canvasElement.addEventListener("pointerdown", session.down, true);
-  canvasElement.addEventListener("pointermove", session.move, true);
-  canvasElement.addEventListener("pointerup", session.up, true);
-  window.addEventListener("keydown", session.escape);
+  window.addEventListener("pointermove", session.move, true);
+  window.addEventListener("pointerup", session.up, true);
+  window.addEventListener("keydown", session.keydown, true);
   pickerRender(session);
   return true;
 }

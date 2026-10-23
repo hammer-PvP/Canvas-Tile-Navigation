@@ -106,36 +106,140 @@ function updateInput(root, name, value) {
   if (el) { el.value = String(value); el.dispatchEvent(new Event("change", { bubbles: true })); }
 }
 
-function openEffectBrowser(onChoose) {
+/** Resolve an installed JB2A database entry for a GM-only HTML video preview.
+ * Sequencer returns a SequencerFile or an array thereof, not always a path.
+ * Using the media element avoids any Scene FX, persistent flags, or sockets.
+ */
+async function previewMediaPath(path) {
+  const entry = globalThis.Sequencer?.Database?.getEntry?.(path, { softFail: true });
+  if (!entry) return null;
+  const fileEntry = Array.isArray(entry) ? entry[0] : entry;
+  let file = typeof fileEntry?.getFile === "function" ? await fileEntry.getFile() : fileEntry;
+  if (file && typeof file === "object" && !Array.isArray(file)) file = file.file ?? file.path ?? file.src ?? file;
+  if (Array.isArray(file)) file = file[0];
+  if (typeof file !== "string" || !/\.(?:webm|mp4|png|jpe?g|webp)(?:[?#].*)?$/i.test(file)) return null;
+  return file;
+}
+
+function openEffectBrowser(onChoose, current = "") {
   const paths = jb2aPaths();
   if (!paths.length) { ui.notifications.warn(label("NoEffects")); return; }
   const dlg = document.createElement("dialog");
   dlg.className = "ctn-fx-browser";
-  dlg.innerHTML = `<section><header><strong>${escape(label("Browse"))}</strong>
-    <button type="button" data-fx-close aria-label="Close">×</button></header>
-    <input type="search" data-fx-query placeholder="${escape(label("Search"))}" autocomplete="off">
-    <p class="hint" data-fx-count></p><div data-fx-results class="ctn-fx-results"></div></section>`;
+  dlg.innerHTML = `<section class="ctn-fx-browser__layout">
+    <div class="ctn-fx-browser__list">
+      <header><strong>${escape(label("Browse"))}</strong>
+        <button type="button" data-fx-close aria-label="Close">×</button></header>
+      <input type="search" data-fx-query placeholder="${escape(label("Search"))}" autocomplete="off">
+      <p class="hint" data-fx-count></p><div data-fx-results class="ctn-fx-results" role="listbox"></div>
+    </div>
+    <div class="ctn-fx-browser__preview">
+      <strong>${escape(label("Preview"))}</strong>
+      <div class="ctn-fx-browser__media">
+        <video data-fx-video muted loop playsinline autoplay controls hidden></video>
+        <img data-fx-image alt="" hidden>
+        <p data-fx-status>${escape(label("ChoosePreview"))}</p>
+      </div>
+      <p data-fx-path class="ctn-fx-browser__path"></p>
+      <footer>
+        <button type="button" data-fx-cancel>${escape(label("CancelEditor"))}</button>
+        <button type="button" data-fx-confirm disabled>${escape(label("ConfirmEffect"))}</button>
+      </footer>
+    </div>
+  </section>`;
   document.body.append(dlg);
   const search = dlg.querySelector("[data-fx-query]");
   const results = dlg.querySelector("[data-fx-results]");
   const count = dlg.querySelector("[data-fx-count]");
+  const video = dlg.querySelector("[data-fx-video]");
+  const image = dlg.querySelector("[data-fx-image]");
+  const status = dlg.querySelector("[data-fx-status]");
+  const pathLabel = dlg.querySelector("[data-fx-path]");
+  const confirm = dlg.querySelector("[data-fx-confirm]");
+  let selected = paths.includes(current) ? current : "";
+  let previewRequest = 0;
+  let filtered = paths;
+  const stopMedia = () => {
+    video.pause(); video.removeAttribute("src"); video.load();
+    video.hidden = true; image.removeAttribute("src"); image.hidden = true;
+  };
+  const preview = async (path) => {
+    const request = ++previewRequest;
+    stopMedia();
+    pathLabel.textContent = path;
+    status.textContent = label("LoadingPreview");
+    status.hidden = false;
+    try {
+      const file = await previewMediaPath(path);
+      if (request !== previewRequest || !dlg.isConnected) return;
+      if (!file) { status.textContent = label("PreviewUnavailable"); return; }
+      if (/\.(png|jpe?g|webp)(?:[?#].*)?$/i.test(file)) {
+        image.src = file; image.hidden = false;
+      } else {
+        video.src = file; video.hidden = false;
+        // HTML media autoplay can be blocked; controls remain usable.
+        void video.play().catch(() => {});
+      }
+      status.hidden = true;
+    } catch (error) {
+      if (request !== previewRequest) return;
+      console.warn(`${MODULE_ID} | JB2A preview unavailable`, error);
+      status.textContent = label("PreviewUnavailable");
+    }
+  };
+  const choose = (path) => {
+    selected = path;
+    confirm.disabled = false;
+    results.querySelectorAll("button").forEach((btn) => {
+      const chosen = btn.dataset.fxPath === path;
+      btn.classList.toggle("selected", chosen);
+      btn.setAttribute("aria-selected", String(chosen));
+    });
+    void preview(path);
+  };
   const render = () => {
     const needle = search.value.trim().toLocaleLowerCase();
-    const filtered = paths.filter((p) => p.toLowerCase().includes(needle));
-    results.replaceChildren();
-    for (const path of filtered.slice(0, 100)) {
+    filtered = paths.filter((p) => p.toLowerCase().includes(needle));
+    const visible = filtered.slice(0, 180);
+    const frag = document.createDocumentFragment();
+    for (const path of visible) {
       const button = document.createElement("button");
       button.type = "button";
+      button.setAttribute("role", "option");
+      button.dataset.fxPath = path;
       button.textContent = path;
       button.title = path;
-      button.addEventListener("click", () => { onChoose(path); dlg.close(); });
-      results.append(button);
+      const chosen = selected === path;
+      button.classList.toggle("selected", chosen);
+      button.setAttribute("aria-selected", String(chosen));
+      button.addEventListener("click", () => choose(path));
+      frag.append(button);
     }
-    count.textContent = `${filtered.length} ${label("Results")}${filtered.length > 100 ? " (first 100)" : ""}`;
+    results.replaceChildren(frag);
+    count.textContent = `${filtered.length} ${label("Results")}${filtered.length > 180 ? " (first 180)" : ""}`;
+    if (!selected || !filtered.includes(selected)) {
+      if (filtered.length) choose(filtered[0]);
+      else { selected = ""; confirm.disabled = true; stopMedia(); status.hidden = false; status.textContent = label("NoEffects"); pathLabel.textContent = ""; }
+    }
   };
-  dlg.querySelector("[data-fx-close]").onclick = () => dlg.close();
-  dlg.addEventListener("close", () => dlg.remove(), { once: true });
+  dlg.querySelector("[data-fx-close]").addEventListener("click", () => dlg.close());
+  dlg.querySelector("[data-fx-cancel]").addEventListener("click", () => dlg.close());
+  confirm.addEventListener("click", () => { if (selected) { onChoose(selected); dlg.close(); } });
+  dlg.addEventListener("close", () => { ++previewRequest; stopMedia(); dlg.remove(); }, { once: true });
   search.addEventListener("input", render);
+  search.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (!filtered.length) return;
+    event.preventDefault();
+    const index = Math.max(0, filtered.indexOf(selected));
+    const next = filtered[Math.max(0, Math.min(filtered.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))];
+    choose(next);
+    results.querySelectorAll("button").forEach((btn) => {
+      if (btn.dataset.fxPath === next) btn.scrollIntoView({ block: "nearest" });
+    });
+  });
+  video.addEventListener("error", () => { video.hidden = true; status.hidden = false; status.textContent = label("PreviewUnavailable"); });
+  image.addEventListener("error", () => { image.hidden = true; status.hidden = false; status.textContent = label("PreviewUnavailable"); });
   render(); dlg.showModal(); search.focus();
 }
 
@@ -163,7 +267,7 @@ export function wireFXConfig(container, tile, application) {
   lifetime.addEventListener("change", refresh);
   ending.addEventListener("change", refresh);
   root.querySelector("[data-ctn-fx-browse]")?.addEventListener("click", () =>
-    openEffectBrowser((value) => updateInput(root, "effect", value)));
+    openEffectBrowser((value) => updateInput(root, "effect", value), liveConfig(tile, root).effect));
   root.querySelector("[data-ctn-fx-preview]")?.addEventListener("click", () => {
     const cfg = liveConfig(tile, root);
     if (!isSequencerAvailable()) { ui.notifications.warn(label("MissingSequencer")); return; }

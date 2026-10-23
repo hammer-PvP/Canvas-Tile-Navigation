@@ -2,6 +2,15 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.13 — Visual FX refinements (2026-10-23)
+
+- Carries forward the Trigger Tile progressive-option checkboxes and dependency protections approved in the v1.1.12 QA build.
+- Conditional Visual FX: explicit unlimited looping for persistent occupancy, movement grace and occupancy polling, including paused/crossing Token movements.
+- Remote Visual FX: start acknowledgment and timeout cleanup to avoid stale "one active effect" locks when a player has the Scene loaded and the GM does not.
+- JB2A browser: live animated GM-only media preview while browsing; explicit selection/confirmation without changing the Tile until confirmation.
+- FX canvas editor: move + resize four corners across multiple interactions, Apply/Cancel, width/height independent of CTN Tile hitbox.
+- Sequencer/JB2A remain optional. No third-party visual media included.
+
 ## 1.1.12
 
 ### Added
