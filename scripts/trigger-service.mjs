@@ -85,17 +85,20 @@ export function defaultTriggerData() {
     state: TRIGGER_STATES.ARMED,
     label: "",
     initialVisibility: TRIGGER_INITIAL_VISIBILITY.HIDDEN,
-    pauseMode: TRIGGER_PAUSE.ON_TRIGGER,
+    pauseMode: TRIGGER_PAUSE.NEVER,
     saveEnabled: false,
     saveState: TRIGGER_SAVE_STATES.OFF,
     disableSaveOnPersistentHazard: true,
     saveAbility: "dex",
     saveDC: 10,
     damageComponents: "[]",
+    damageEnabled: false,
     damageCondition: TRIGGER_CONDITIONS.ALWAYS,
+    transitionEnabled: false,
     transitionSceneUuid: "",
     transitionArrivalUuid: "",
     transitionCondition: TRIGGER_CONDITIONS.ALWAYS,
+    revealEnabled: true,
     revealCondition: TRIGGER_REVEAL.ON_TRIGGER,
     afterTrigger: TRIGGER_AFTER.REMAIN_VISIBLE
   };
@@ -105,7 +108,17 @@ export function triggerData(tile) {
   const raw = tile?.getFlag?.(MODULE_ID, "trigger");
   if (!raw?.enabled) return null;
 
-  const saveEnabled = raw.saveEnabled === true || raw.saveEnabled === "true";
+  const enabledFlag = (value, fallback) => value === undefined || value === null
+    ? fallback
+    : value === true || value === "true";
+  const saveEnabled = enabledFlag(raw.saveEnabled, false);
+  // Existing Tiles do not have these three flags. Infer enabled resources from
+  // their already configured values, without rewriting legacy documents.
+  const damageEnabled = enabledFlag(raw.damageEnabled, parseDamageComponents(raw.damageComponents).some(
+    (component) => String(component?.formula ?? "").trim()
+  ));
+  const transitionEnabled = enabledFlag(raw.transitionEnabled, Boolean(raw.transitionSceneUuid));
+  const revealEnabled = enabledFlag(raw.revealEnabled, raw.revealCondition !== TRIGGER_REVEAL.NEVER);
   const configuredSaveState = saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF;
   const disableSaveOnPersistentHazard = raw.disableSaveOnPersistentHazard !== false
     && raw.disableSaveOnPersistentHazard !== "false";
@@ -122,14 +135,19 @@ export function triggerData(tile) {
     ? TRIGGER_SAVE_STATES.OFF
     : configuredSaveState;
 
-  const runtimeSaveState = raw.state === TRIGGER_STATES.ARMED
-    ? configuredSaveState
-    : (validRuntimeSaveState ?? migratedPersistentState);
+  const runtimeSaveState = !saveEnabled
+    ? TRIGGER_SAVE_STATES.OFF
+    : raw.state === TRIGGER_STATES.ARMED
+      ? configuredSaveState
+      : (validRuntimeSaveState ?? migratedPersistentState);
 
   return {
     ...defaultTriggerData(),
     ...raw,
     saveEnabled,
+    damageEnabled,
+    transitionEnabled,
+    revealEnabled,
     saveState: runtimeSaveState,
     disableSaveOnPersistentHazard,
     saveDC: Number(raw.saveDC) || 10,
@@ -144,7 +162,28 @@ function configuredSaveState(data) {
 }
 
 function saveIsActive(data) {
-  return data?.saveState === TRIGGER_SAVE_STATES.ON;
+  return Boolean(data?.saveEnabled && supportsTriggerRules()
+    && data.saveState === TRIGGER_SAVE_STATES.ON);
+}
+
+function validTriggerDestination(data) {
+  if (!data?.transitionEnabled || !data.transitionSceneUuid || !data.transitionArrivalUuid) return false;
+  const scene = resolveScene(data.transitionSceneUuid);
+  const arrival = resolveTile(data.transitionArrivalUuid);
+  return Boolean(scene && arrival?.parent?.id === scene.id);
+}
+
+// Post-trigger behavior requires its feature to exist. Invalid legacy
+// combinations have a safe effective behavior; stored preferences remain intact.
+function effectiveAfterTrigger(data) {
+  if (data?.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION && !validTriggerDestination(data)) {
+    return TRIGGER_AFTER.REMAIN_ACTIVE_TRAP;
+  }
+  if (data?.afterTrigger === TRIGGER_AFTER.PERSISTENT_DAMAGE
+      && (!data.damageEnabled || !getTriggerDamageComponents(data).length)) {
+    return TRIGGER_AFTER.REMAIN_ACTIVE_TRAP;
+  }
+  return data?.afterTrigger;
 }
 
 export function isTriggerTile(tile) {
@@ -156,8 +195,9 @@ export function triggerTiles(scene) {
   return [...scene.tiles].filter(isTriggerTile);
 }
 
-export function getTriggerDamageComponents(tileOrData) {
+export function getTriggerDamageComponents(tileOrData, { includeDisabled = false } = {}) {
   const data = tileOrData?.documentName === "Tile" ? triggerData(tileOrData) : tileOrData;
+  if (!includeDisabled && !data?.damageEnabled) return [];
   return parseDamageComponents(data?.damageComponents)
     .map((entry) => ({
       formula: String(entry?.formula ?? "").trim(),
@@ -199,7 +239,7 @@ function triggerOccupants(trigger) {
 
 async function rearmIfEmpty(trigger) {
   const data = triggerData(trigger);
-  if (!data || data.afterTrigger !== TRIGGER_AFTER.REARM_WHEN_EMPTY) return false;
+  if (!data || effectiveAfterTrigger(data) !== TRIGGER_AFTER.REARM_WHEN_EMPTY) return false;
   if ([TRIGGER_STATES.ARMED, TRIGGER_STATES.DISABLED].includes(data.state)) return false;
   if (triggerOccupants(trigger).length) return false;
   await hideAndRearm(trigger);
@@ -330,8 +370,8 @@ function onPreMoveToken(token, movement, operation = {}) {
 
   const data = triggerData(crossed.trigger);
   const revealedDirect = data.state === TRIGGER_STATES.REVEALED
-    && data.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION
-    && Boolean(data.transitionSceneUuid && data.transitionArrivalUuid);
+    && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION
+    && validTriggerDestination(data);
   const shouldPause = !revealedDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
 
   if (shouldPause) {
@@ -400,11 +440,9 @@ async function disableTrigger(trigger) {
 function conditionMatches(condition, resolution, { saveActive = true, kind = "damage" } = {}) {
   if (condition === TRIGGER_CONDITIONS.ALWAYS) return true;
 
-  // Once Save is OFF, save-dependent damage conditions collapse to direct
-  // damage. This is what allows a revealed persistent hazard to keep causing
-  // damage without asking for PASS / NOT PASS again. Transition conditions do
-  // not silently broaden in the same way.
-  if (!saveActive) return kind === "damage";
+  // When Save is OFF, all enabled consequences become direct. The configured
+  // condition is preserved so it applies again when Save is re-enabled.
+  if (!saveActive) return true;
 
   if (condition === TRIGGER_CONDITIONS.HALF_ON_SUCCESS) return resolution.saveResult !== null;
   if (condition === TRIGGER_CONDITIONS.FAILED_SAVE) return resolution.saveResult === false;
@@ -419,7 +457,9 @@ function damageMultiplier(trigger, resolution) {
 }
 
 function shouldReveal(data, resolution, phase) {
-  if (data.revealCondition === TRIGGER_REVEAL.NEVER) return false;
+  if (!data.revealEnabled || data.revealCondition === TRIGGER_REVEAL.NEVER) return false;
+  // A Save-dependent reveal cannot wait for a Save that is disabled.
+  if (!saveIsActive(data)) return phase === "trigger";
   if (phase === "trigger") return data.revealCondition === TRIGGER_REVEAL.ON_TRIGGER;
   if (phase === "save") {
     return (data.revealCondition === TRIGGER_REVEAL.FAILED_SAVE && resolution.saveResult === false)
@@ -461,7 +501,7 @@ function resolutionEligibility(trigger, token, resolution) {
     && saveGateOpen
     && conditionMatches(data.damageCondition, resolution, { saveActive: saveRequired, kind: "damage" });
   const transitionEligible = resolution.mode !== "persistent-damage"
-    && Boolean(data.transitionSceneUuid && data.transitionArrivalUuid)
+    && validTriggerDestination(data)
     && saveGateOpen
     && conditionMatches(data.transitionCondition, resolution, { saveActive: saveRequired, kind: "transition" });
   const locked = Boolean(triggerLockData(token)?.active);
@@ -563,7 +603,7 @@ function renderResolutionCard(trigger, token, resolution) {
       ${locked ? `<p class="ctn-trigger-card__paused"><i class="fa-solid fa-lock"></i> ${escapeHTML(game.i18n.localize("CTN.Trigger.MovementPaused"))}</p>` : ""}
       <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Save"))}:</strong> ${saveText}</div>
       <div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Damage"))}:</strong><br>${damageText}${rolledText}${multiplierControl}</div>
-      ${resolution.mode !== "persistent-damage" && data.transitionSceneUuid ? `<div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Transition"))}:</strong> ${escapeHTML(resolveScene(data.transitionSceneUuid)?.name ?? "—")}</div>` : ""}
+      ${resolution.mode !== "persistent-damage" && validTriggerDestination(data) ? `<div class="ctn-trigger-card__section"><strong>${escapeHTML(game.i18n.localize("CTN.Trigger.Transition"))}:</strong> ${escapeHTML(resolveScene(data.transitionSceneUuid)?.name ?? "—")}</div>` : ""}
       ${complete ? `<p class="ctn-trigger-card__resolved">${escapeHTML(game.i18n.localize("CTN.Trigger.Resolved"))}</p>` : `<div class="ctn-trigger-card__actions">${buttons.join("")}</div>`}
     </section>
   `;
@@ -622,7 +662,7 @@ async function finalizeTriggerBehavior(trigger, resolution) {
   const data = triggerData(trigger);
   if (!data) return;
 
-  switch (data.afterTrigger) {
+  switch (effectiveAfterTrigger(data)) {
     case TRIGGER_AFTER.DISABLE:
       await disableTrigger(trigger);
       break;
@@ -821,15 +861,15 @@ async function handleTriggerEnter(message) {
 
   emitVisualFX(trigger, "activation", token);
   const isDirect = data.state === TRIGGER_STATES.REVEALED
-    && data.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION
-    && Boolean(data.transitionSceneUuid && data.transitionArrivalUuid);
+    && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION
+    && validTriggerDestination(data);
   if (isDirect) {
     await performRevealedDirectTransition(trigger, token, message.requesterId);
     return;
   }
 
   const isPersistentHazard = data.state === TRIGGER_STATES.ACTIVE_HAZARD
-    && data.afterTrigger === TRIGGER_AFTER.PERSISTENT_DAMAGE;
+    && effectiveAfterTrigger(data) === TRIGGER_AFTER.PERSISTENT_DAMAGE;
   const dataAtEntry = foundry.utils.deepClone(data);
   const { message: chatMessage, resolution } = await createResolutionMessage(
     trigger,
@@ -868,7 +908,7 @@ function checkRearmState(scene) {
   if (!isPrimaryGM() || !scene) return;
   for (const trigger of triggerTiles(scene)) {
     const data = triggerData(trigger);
-    if (data?.afterTrigger !== TRIGGER_AFTER.REARM_WHEN_EMPTY) continue;
+    if (effectiveAfterTrigger(data) !== TRIGGER_AFTER.REARM_WHEN_EMPTY) continue;
     if ([TRIGGER_STATES.ARMED, TRIGGER_STATES.DISABLED].includes(data.state)) continue;
     void rearmIfEmpty(trigger);
   }
@@ -1006,7 +1046,7 @@ async function handleArrivalMaterialized({ tokenUuids = [] } = {}) {
       .filter((candidate) => {
         const data = triggerData(candidate);
         return !(data?.state === TRIGGER_STATES.REVEALED
-          && data?.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION);
+          && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION);
       })
       .filter((candidate) => tokenInsideTrigger(token, candidate))
       .sort((a, b) => (Number(b.sort) || 0) - (Number(a.sort) || 0))[0];
@@ -1014,7 +1054,7 @@ async function handleArrivalMaterialized({ tokenUuids = [] } = {}) {
 
     const data = triggerData(trigger);
     const isDirect = data.state === TRIGGER_STATES.REVEALED
-      && data.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION;
+      && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION;
     const shouldPause = !isDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
     await handleTriggerEnter({
       type: "trigger-enter",

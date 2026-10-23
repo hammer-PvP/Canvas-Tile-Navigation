@@ -97,21 +97,6 @@ function statusHTML(tile) {
 }
 
 
-function booleanOptions(current) {
-  return [
-    ["false", localized("CTN.Trigger.No")],
-    ["true", localized("CTN.Trigger.Yes")]
-  ].map(([value, label]) => option(value, label, String(Boolean(current)))).join("");
-}
-
-
-function initialSaveStateOptions(enabled) {
-  return [
-    ["false", localized("CTN.Trigger.StateOff")],
-    ["true", localized("CTN.Trigger.StateOn")]
-  ].map(([value, label]) => option(value, label, String(Boolean(enabled)))).join("");
-}
-
 function triggerArrivalCandidates(sceneUuid) {
   const scene = resolveScene(sceneUuid);
   if (!scene) return [];
@@ -150,46 +135,41 @@ function damageRowsHTML(components) {
 
 function triggerConfigHTML(tile, data) {
   const supported = supportsTriggerRules();
-  const abilities = abilityChoices();
-  const components = getTriggerDamageComponents(data);
+  const components = getTriggerDamageComponents(data, { includeDisabled: true });
   const damageJSON = JSON.stringify(components);
-
+  const base = `flags.${MODULE_ID}.trigger`;
+  const toggle = (name, enabled, caption) => `
+    <div class="ctn-trigger-toggle-row">
+      <label class="ctn-trigger-toggle"><input type="hidden" data-ctn-trigger-toggle-value="${name}" name="${base}.${name}" value="${enabled ? "true" : "false"}">
+        <input type="checkbox" data-ctn-trigger-toggle="${name}" ${enabled ? "checked" : ""}> <strong>${escapeHTML(caption)}</strong>
+      </label>
+    </div>`;
   const initialVisibility = [
     [TRIGGER_INITIAL_VISIBILITY.HIDDEN, localized("CTN.Trigger.Hidden")],
     [TRIGGER_INITIAL_VISIBILITY.VISIBLE, localized("CTN.Trigger.Visible")]
   ].map(([value, label]) => option(value, label, data.initialVisibility)).join("");
-
-  const pauseOptions = [
-    [TRIGGER_PAUSE.NEVER, localized("CTN.Trigger.PauseNever")],
-    [TRIGGER_PAUSE.ON_TRIGGER, localized("CTN.Trigger.PauseOnTrigger")]
-  ].map(([value, label]) => option(value, label, data.pauseMode)).join("");
-
-  const abilityOptions = abilities.map((entry) => option(entry.id, entry.label, data.saveAbility)).join("");
-  const configuredSaveOptions = initialSaveStateOptions(data.saveEnabled);
-  const persistentHazardSaveOptions = [
-    ["true", localized("CTN.Trigger.PersistentHazardSaveOff")],
-    ["false", localized("CTN.Trigger.PersistentHazardSaveKeep")]
-  ].map(([value, label]) => option(value, label, String(Boolean(data.disableSaveOnPersistentHazard)))).join("");
+  const abilityOptions = abilityChoices()
+    .map((entry) => option(entry.id, entry.label, data.saveAbility)).join("");
   const damageConditions = [
     [TRIGGER_CONDITIONS.ALWAYS, localized("CTN.Trigger.ConditionAlways")],
     [TRIGGER_CONDITIONS.FAILED_SAVE, localized("CTN.Trigger.ConditionFailed")],
     [TRIGGER_CONDITIONS.SUCCESSFUL_SAVE, localized("CTN.Trigger.ConditionSuccess")],
     [TRIGGER_CONDITIONS.HALF_ON_SUCCESS, localized("CTN.Trigger.ConditionHalf")]
   ].map(([value, label]) => option(value, label, data.damageCondition)).join("");
-
   const transitionConditions = [
     [TRIGGER_CONDITIONS.ALWAYS, localized("CTN.Trigger.ConditionAlways")],
     [TRIGGER_CONDITIONS.FAILED_SAVE, localized("CTN.Trigger.ConditionFailed")],
     [TRIGGER_CONDITIONS.SUCCESSFUL_SAVE, localized("CTN.Trigger.ConditionSuccess")]
   ].map(([value, label]) => option(value, label, data.transitionCondition)).join("");
-
   const revealOptions = [
-    [TRIGGER_REVEAL.NEVER, localized("CTN.Trigger.RevealNever")],
     [TRIGGER_REVEAL.ON_TRIGGER, localized("CTN.Trigger.RevealOnTrigger")],
     [TRIGGER_REVEAL.FAILED_SAVE, localized("CTN.Trigger.RevealFailed")],
     [TRIGGER_REVEAL.SUCCESSFUL_SAVE, localized("CTN.Trigger.RevealSuccess")]
   ].map(([value, label]) => option(value, label, data.revealCondition)).join("");
-
+  const hazardSaveOptions = [
+    ["true", localized("CTN.Trigger.PersistentHazardSaveOff")],
+    ["false", localized("CTN.Trigger.PersistentHazardSaveKeep")]
+  ].map(([value, label]) => option(value, label, String(Boolean(data.disableSaveOnPersistentHazard)))).join("");
   const afterOptions = [
     [TRIGGER_AFTER.DISABLE, localized("CTN.Trigger.AfterDisable")],
     [TRIGGER_AFTER.REMAIN_VISIBLE, localized("CTN.Trigger.AfterVisible")],
@@ -202,93 +182,83 @@ function triggerConfigHTML(tile, data) {
   return `
     <fieldset class="ctn-config ctn-trigger-config" data-ctn-trigger-config>
       <legend><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHTML(localized("CTN.Trigger.ConfigTitle"))}</legend>
-
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.Trigger.State"))}</label>
         <div class="form-fields"><span class="ctn-route-status ok">${escapeHTML(String(data.state).toUpperCase())}</span>
           <button type="button" data-ctn-trigger-reset><i class="fa-solid fa-rotate-left"></i> ${escapeHTML(localized("CTN.Trigger.Reset"))}</button>
         </div>
       </div>
-
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.TileConfig.Label"))}</label>
-        <div class="form-fields"><input type="text" name="flags.${MODULE_ID}.trigger.label" value="${escapeHTML(data.label)}"></div>
+        <div class="form-fields"><input type="text" name="${base}.label" value="${escapeHTML(data.label)}"></div>
       </div>
-
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.Trigger.InitialVisibility"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.initialVisibility">${initialVisibility}</select></div>
+        <div class="form-fields"><select name="${base}.initialVisibility">${initialVisibility}</select></div>
       </div>
-
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.PauseMovement"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.pauseMode">${pauseOptions}</select></div>
-      </div>
-
-      <hr>
-      <h4>${escapeHTML(localized("CTN.Trigger.Save"))}</h4>
-      ${supported ? "" : `<p class="hint warning">${escapeHTML(localized("CTN.Trigger.SystemRuleUnsupportedHint"))}</p>`}
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.SaveInitialState"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.saveEnabled">${configuredSaveOptions}</select></div>
-      </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.SaveCurrentState"))}</label>
-        <div class="form-fields"><span class="ctn-route-status ${data.saveState === TRIGGER_SAVE_STATES.ON ? "ok" : "warning"}">${escapeHTML(data.saveState === TRIGGER_SAVE_STATES.ON ? localized("CTN.Trigger.StateOn") : localized("CTN.Trigger.StateOff"))}</span></div>
-      </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.Ability"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.saveAbility" ${supported ? "" : "disabled"}>${abilityOptions}</select></div>
-      </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.DC"))}</label>
-        <div class="form-fields"><input type="number" min="1" step="1" name="flags.${MODULE_ID}.trigger.saveDC" value="${Number(data.saveDC) || 10}"></div>
-      </div>
+      <div class="ctn-trigger-toggle-row"><label class="ctn-trigger-toggle">
+        <input type="hidden" data-ctn-trigger-pause-value name="${base}.pauseMode" value="${escapeHTML(data.pauseMode)}">
+        <input type="checkbox" data-ctn-trigger-pause ${data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER ? "checked" : ""}>
+        <strong>${escapeHTML(localized("CTN.Trigger.PauseMovement"))}</strong>
+      </label></div>
 
       <hr>
-      <h4>${escapeHTML(localized("CTN.Trigger.Damage"))}</h4>
-      <input type="hidden" data-ctn-damage-json name="flags.${MODULE_ID}.trigger.damageComponents" value="${escapeHTML(damageJSON)}">
-      <div data-ctn-damage-list>${damageRowsHTML(components)}</div>
-      <button type="button" data-ctn-damage-add><i class="fa-solid fa-plus"></i> ${escapeHTML(localized("CTN.Trigger.AddDamage"))}</button>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.DamageCondition"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.damageCondition">${damageConditions}</select></div>
-      </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.PersistentHazardSave"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.disableSaveOnPersistentHazard">${persistentHazardSaveOptions}</select></div>
-      </div>
-      <p class="hint">${escapeHTML(localized("CTN.Trigger.PersistentHazardSaveHint"))}</p>
-
-      <hr>
-      <h4>${escapeHTML(localized("CTN.Trigger.Transition"))}</h4>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.TileConfig.TargetScene"))}</label>
-        <div class="form-fields">
-          <select data-ctn-trigger-scene name="flags.${MODULE_ID}.trigger.transitionSceneUuid">
-            <option value="">${escapeHTML(localized("CTN.Trigger.NoTransition"))}</option>
-            ${sceneOptions(data.transitionSceneUuid)}
-          </select>
+      ${toggle("saveEnabled", data.saveEnabled, localized("CTN.Trigger.EnableSave"))}
+      <div class="ctn-trigger-option-body" data-ctn-trigger-section="saveEnabled" ${data.saveEnabled ? "" : "hidden"}>
+        ${supported ? "" : `<p class="hint warning">${escapeHTML(localized("CTN.Trigger.SystemRuleUnsupportedHint"))}</p>`}
+        <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.SaveCurrentState"))}</label>
+          <div class="form-fields"><span class="ctn-route-status ${data.saveState === TRIGGER_SAVE_STATES.ON ? "ok" : "warning"}">${escapeHTML(data.saveState === TRIGGER_SAVE_STATES.ON ? localized("CTN.Trigger.StateOn") : localized("CTN.Trigger.StateOff"))}</span></div>
         </div>
-      </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.Arrival"))}</label>
-        <div class="form-fields"><select data-ctn-trigger-arrival name="flags.${MODULE_ID}.trigger.transitionArrivalUuid">${triggerArrivalOptions(data.transitionSceneUuid, data.transitionArrivalUuid)}</select></div>
-      </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.TransitionCondition"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.transitionCondition">${transitionConditions}</select></div>
+        <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.Ability"))}</label>
+          <div class="form-fields"><select name="${base}.saveAbility" ${supported ? "" : "disabled"}>${abilityOptions}</select></div></div>
+        <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.DC"))}</label>
+          <div class="form-fields"><input type="number" min="1" step="1" name="${base}.saveDC" value="${Number(data.saveDC) || 10}"></div></div>
       </div>
 
       <hr>
-      <h4>${escapeHTML(localized("CTN.Trigger.StateAfterTrigger"))}</h4>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.RevealTile"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.revealCondition">${revealOptions}</select></div>
+      ${toggle("damageEnabled", data.damageEnabled, localized("CTN.Trigger.EnableDamage"))}
+      <input type="hidden" data-ctn-damage-json name="${base}.damageComponents" value="${escapeHTML(damageJSON)}">
+      <div class="ctn-trigger-option-body" data-ctn-trigger-section="damageEnabled" ${data.damageEnabled ? "" : "hidden"}>
+        <div data-ctn-damage-list>${damageRowsHTML(components)}</div>
+        <button type="button" data-ctn-damage-add><i class="fa-solid fa-plus"></i> ${escapeHTML(localized("CTN.Trigger.AddDamage"))}</button>
+        <p class="hint ctn-trigger-warning" data-ctn-trigger-damage-hint hidden>${escapeHTML(localized("CTN.Trigger.NeedDamage"))}</p>
+        <div class="form-group" data-ctn-trigger-save-only>
+          <label>${escapeHTML(localized("CTN.Trigger.DamageCondition"))}</label>
+          <div class="form-fields"><select name="${base}.damageCondition">${damageConditions}</select></div>
+        </div>
+        <p class="hint" data-ctn-trigger-no-save>${escapeHTML(localized("CTN.Trigger.NoSaveDirect"))}</p>
       </div>
-      <div class="form-group">
-        <label>${escapeHTML(localized("CTN.Trigger.AfterTrigger"))}</label>
-        <div class="form-fields"><select name="flags.${MODULE_ID}.trigger.afterTrigger">${afterOptions}</select></div>
+
+      <hr>
+      ${toggle("transitionEnabled", data.transitionEnabled, localized("CTN.Trigger.EnableTransition"))}
+      <div class="ctn-trigger-option-body" data-ctn-trigger-section="transitionEnabled" ${data.transitionEnabled ? "" : "hidden"}>
+        <div class="form-group"><label>${escapeHTML(localized("CTN.TileConfig.TargetScene"))}</label>
+          <div class="form-fields"><select data-ctn-trigger-scene name="${base}.transitionSceneUuid">
+            <option value="">${escapeHTML(localized("CTN.Trigger.NoTransition"))}</option>${sceneOptions(data.transitionSceneUuid)}</select></div></div>
+        <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.Arrival"))}</label>
+          <div class="form-fields"><select data-ctn-trigger-arrival name="${base}.transitionArrivalUuid">${triggerArrivalOptions(data.transitionSceneUuid, data.transitionArrivalUuid)}</select></div></div>
+        <p class="hint ctn-trigger-warning" data-ctn-trigger-transition-hint hidden>${escapeHTML(localized("CTN.Trigger.NeedDestination"))}</p>
+        <div class="form-group" data-ctn-trigger-save-only><label>${escapeHTML(localized("CTN.Trigger.TransitionCondition"))}</label>
+          <div class="form-fields"><select name="${base}.transitionCondition">${transitionConditions}</select></div></div>
+        <p class="hint" data-ctn-trigger-no-save>${escapeHTML(localized("CTN.Trigger.NoSaveDirect"))}</p>
+      </div>
+
+      <hr>
+      ${toggle("revealEnabled", data.revealEnabled, localized("CTN.Trigger.EnableReveal"))}
+      <div class="ctn-trigger-option-body" data-ctn-trigger-section="revealEnabled" ${data.revealEnabled ? "" : "hidden"}>
+        <div class="form-group" data-ctn-trigger-save-only><label>${escapeHTML(localized("CTN.Trigger.RevealTile"))}</label>
+          <div class="form-fields"><select data-ctn-trigger-reveal name="${base}.revealCondition">${revealOptions}</select></div></div>
+        <p class="hint" data-ctn-trigger-no-save>${escapeHTML(localized("CTN.Trigger.RevealWithoutSave"))}</p>
+      </div>
+
+      <hr>
+      <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.AfterTrigger"))}</label>
+        <div class="form-fields"><select data-ctn-trigger-after name="${base}.afterTrigger">${afterOptions}</select></div></div>
+      <p class="hint" data-ctn-trigger-after-hint>${escapeHTML(localized("CTN.Trigger.AfterHint"))}</p>
+      <div data-ctn-trigger-hazard-save hidden>
+        <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.PersistentHazardSave"))}</label>
+          <div class="form-fields"><select name="${base}.disableSaveOnPersistentHazard">${hazardSaveOptions}</select></div></div>
+        <p class="hint">${escapeHTML(localized("CTN.Trigger.PersistentHazardSaveHint"))}</p>
       </div>
       <p class="hint">${escapeHTML(localized("CTN.Trigger.ImageHint"))}</p>
     </fieldset>
@@ -840,9 +810,12 @@ function wireTriggerConfig(container, tile) {
           wireDamageRows();
         }
         syncDamage();
+        root.dispatchEvent(new Event("ctn-trigger-refresh"));
       };
     });
     list?.querySelectorAll("input, select").forEach((input) => {
+      if (input.dataset.ctnDamageWired) return;
+      input.dataset.ctnDamageWired = "true";
       input.addEventListener("input", syncDamage);
       input.addEventListener("change", syncDamage);
     });
@@ -852,16 +825,92 @@ function wireTriggerConfig(container, tile) {
     list?.insertAdjacentHTML("beforeend", damageRowsHTML([]));
     wireDamageRows();
     syncDamage();
+    root.dispatchEvent(new Event("ctn-trigger-refresh"));
   });
   wireDamageRows();
 
   const sceneSelect = root.querySelector("[data-ctn-trigger-scene]");
   const arrivalSelect = root.querySelector("[data-ctn-trigger-arrival]");
+  const after = root.querySelector("[data-ctn-trigger-after]");
+  const pause = root.querySelector("[data-ctn-trigger-pause]");
+  const pauseValue = root.querySelector("[data-ctn-trigger-pause-value]");
+  const switches = Object.fromEntries([...root.querySelectorAll("[data-ctn-trigger-toggle]")]
+    .map((input) => [input.dataset.ctnTriggerToggle, input]));
+  let suspendedAfter = null;
+  const refresh = () => {
+    const enabled = (name) => Boolean(switches[name]?.checked);
+    for (const [name, input] of Object.entries(switches)) {
+      const value = root.querySelector(`[data-ctn-trigger-toggle-value="${name}"]`);
+      if (value) {
+        const next = input.checked ? "true" : "false";
+        if (value.value !== next) {
+          value.value = next;
+          value.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+      const body = root.querySelector(`[data-ctn-trigger-section="${name}"]`);
+      if (body) body.hidden = !input.checked;
+    }
+    if (pauseValue) {
+      const next = pause.checked ? TRIGGER_PAUSE.ON_TRIGGER : TRIGGER_PAUSE.NEVER;
+      if (pauseValue.value !== next) {
+        pauseValue.value = next;
+        pauseValue.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+    root.querySelectorAll("[data-ctn-trigger-save-only]").forEach((el) => el.hidden = !enabled("saveEnabled"));
+    root.querySelectorAll("[data-ctn-trigger-no-save]").forEach((el) => el.hidden = enabled("saveEnabled"));
+    const damageReady = enabled("damageEnabled")
+      && [...(list?.querySelectorAll("[data-ctn-damage-formula]") ?? [])]
+        .some((input) => input.value.trim());
+    const destinationReady = enabled("transitionEnabled") && Boolean(sceneSelect?.value && arrivalSelect?.value);
+    const damageHint = root.querySelector("[data-ctn-trigger-damage-hint]");
+    if (damageHint) damageHint.hidden = !enabled("damageEnabled") || damageReady;
+    const transitionHint = root.querySelector("[data-ctn-trigger-transition-hint]");
+    if (transitionHint) transitionHint.hidden = !enabled("transitionEnabled") || destinationReady;
+
+    // Invalid combinations are not selectable. A temporary forced fallback
+    // is restored if the prerequisite is re-enabled in the same edit session.
+    const valid = (kind) => kind === TRIGGER_AFTER.DIRECT_TRANSITION
+      ? destinationReady
+      : kind === TRIGGER_AFTER.PERSISTENT_DAMAGE ? damageReady : true;
+    for (const kind of [TRIGGER_AFTER.DIRECT_TRANSITION, TRIGGER_AFTER.PERSISTENT_DAMAGE]) {
+      const option = [...after.options].find((entry) => entry.value === kind);
+      if (option) option.disabled = !valid(kind);
+    }
+    if (!valid(after.value)) {
+      suspendedAfter = after.value;
+      after.value = TRIGGER_AFTER.REMAIN_ACTIVE_TRAP;
+    } else if (suspendedAfter && valid(suspendedAfter)
+        && after.value === TRIGGER_AFTER.REMAIN_ACTIVE_TRAP) {
+      after.value = suspendedAfter;
+      suspendedAfter = null;
+    }
+    const hazardSave = root.querySelector("[data-ctn-trigger-hazard-save]");
+    if (hazardSave) hazardSave.hidden = after.value !== TRIGGER_AFTER.PERSISTENT_DAMAGE || !enabled("saveEnabled");
+
+    // Required only while the corresponding feature is ON. A partial setup
+    // cannot silently create a nonfunctional transition/damage component.
+    if (sceneSelect) sceneSelect.required = enabled("transitionEnabled");
+    if (arrivalSelect) arrivalSelect.required = enabled("transitionEnabled");
+    const damageInputs = [...(list?.querySelectorAll("[data-ctn-damage-formula]") ?? [])];
+    damageInputs.forEach((input, index) => { input.required = enabled("damageEnabled") && !damageReady && index === 0; });
+  };
+
   sceneSelect?.addEventListener("change", () => {
     if (!arrivalSelect) return;
     arrivalSelect.innerHTML = triggerArrivalOptions(sceneSelect.value, "");
     arrivalSelect.dispatchEvent(new Event("change", { bubbles: true }));
   });
+  arrivalSelect?.addEventListener("change", refresh);
+  pause?.addEventListener("change", refresh);
+  for (const input of Object.values(switches)) input.addEventListener("change", refresh);
+  after?.addEventListener("change", () => { suspendedAfter = null; refresh(); });
+  list?.addEventListener("input", refresh);
+  list?.addEventListener("change", refresh);
+  root.addEventListener("ctn-trigger-refresh", refresh);
+  // Avoid accidentally saving a visually selected unsupported combination.
+  refresh();
 }
 
 export function registerTileConfigHooks() {
@@ -924,6 +973,37 @@ export function registerTileConfigHooks() {
 
       if (hasSubmittedValue(changes, `${base}.initialVisibility`) && state === "armed") {
         changes.hidden = initialVisibility === TRIGGER_INITIAL_VISIBILITY.HIDDEN;
+      }
+      // The functional Save toggle wins over stale runtime Save State. The
+      // persistent-hazard policy remains the only intentional exception.
+      if (hasSubmittedValue(changes, `${base}.saveEnabled`)) {
+        const enabled = [true, "true"].includes(getSubmittedValue(changes, `${base}.saveEnabled`, trigger.saveEnabled));
+        const hazard = state === "active-hazard"
+          && getSubmittedValue(changes, `${base}.afterTrigger`, trigger.afterTrigger) === TRIGGER_AFTER.PERSISTENT_DAMAGE
+          && [true, "true"].includes(getSubmittedValue(changes, `${base}.disableSaveOnPersistentHazard`, trigger.disableSaveOnPersistentHazard));
+        foundry.utils.setProperty(changes, `${base}.saveState`, enabled && !hazard
+          ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF);
+      }
+
+      // Normalize prerequisites at the persistence boundary too: sheets other
+      // than this one may submit direct flag changes, including macros.
+      const relevantFields = ["damageEnabled", "damageComponents", "transitionEnabled",
+        "transitionSceneUuid", "transitionArrivalUuid", "afterTrigger"];
+      if (relevantFields.some((key) => hasSubmittedValue(changes, `${base}.${key}`))) {
+        const bool = (value) => value === true || value === "true";
+        const damageEnabled = bool(getSubmittedValue(changes, `${base}.damageEnabled`, trigger.damageEnabled));
+        const transitionEnabled = bool(getSubmittedValue(changes, `${base}.transitionEnabled`, trigger.transitionEnabled));
+        const proposedAfter = getSubmittedValue(changes, `${base}.afterTrigger`, trigger.afterTrigger);
+        const damageValue = getSubmittedValue(changes, `${base}.damageComponents`, trigger.damageComponents);
+        const components = getTriggerDamageComponents({ damageEnabled, damageComponents: damageValue });
+        const targetScene = resolveScene(sceneUuid);
+        const hasValidDestination = transitionEnabled && Boolean(
+          targetScene && arrival && arrival.parent?.id === targetScene.id);
+        const invalidAfter = proposedAfter === TRIGGER_AFTER.DIRECT_TRANSITION && !hasValidDestination
+          || proposedAfter === TRIGGER_AFTER.PERSISTENT_DAMAGE && (!damageEnabled || !components.length);
+        if (invalidAfter) {
+          foundry.utils.setProperty(changes, `${base}.afterTrigger`, TRIGGER_AFTER.REMAIN_ACTIVE_TRAP);
+        }
       }
 
       if (hasSubmittedValue(changes, `${base}.transitionSceneUuid`)

@@ -309,3 +309,35 @@
 .ctn-fx-results { display: flex; flex-direction: column; gap: .25rem; overflow-y: auto; max-height: 52vh; }
 .ctn-fx-results button { text-align: left; font-family: monospace; font-size: .78rem; flex: none;
   overflow-wrap: anywhere; height: auto; min-height: 2rem; padding: .35rem; }
+
+/* Trigger Tile optional sections: hidden means inactive visually; preferences
+   stay in the form so toggling a feature never wipes its configuration. */
+.ctn-trigger-config [hidden] {
+  display: none !important;
+}
+
+.ctn-trigger-toggle-row {
+  margin: 0.35rem 0;
+}
+
+.ctn-trigger-toggle {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  cursor: pointer;
+}
+
+.ctn-trigger-toggle input[type="checkbox"] {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.ctn-trigger-option-body {
+  margin: 0.35rem 0 0.75rem 1.25rem;
+  padding-left: 0.65rem;
+  border-left: 2px solid var(--color-border-light-2);
+}
+
+.ctn-trigger-warning {
+  color: var(--color-text-emphatic, #d6a62c);
+}
