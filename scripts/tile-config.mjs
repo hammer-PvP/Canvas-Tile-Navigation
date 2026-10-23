@@ -51,6 +51,7 @@ import {
   transitionStatusLabel
 } from "./transition-service.mjs";
 import { openDefaultAssetImagePicker } from "./asset-folder.mjs";
+import { fxConfigHTML, wireFXConfig } from "./fx-config.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 
@@ -885,7 +886,7 @@ export function registerTileConfigHooks() {
         ? arrivalConfigHTML(tile, nav)
         : linkConfigHTML(tile, nav);
 
-    const html = `${(transition || trigger) ? tileImageConfigHTML(tile) : ""}${configHTML}`;
+    const html = `${(transition || trigger) ? tileImageConfigHTML(tile) : ""}${configHTML}${fxConfigHTML(tile)}`;
     let host = injectCtnTab(application, form, html);
 
     // Safety fallback: if a future Foundry TileConfig changes its tab markup,
@@ -902,6 +903,7 @@ export function registerTileConfigHooks() {
     }
 
     if (transition || trigger) wireAssetConfig(host, tile);
+    wireFXConfig(host, tile, application);
     if (transition) wireTransitionConfig(host, tile);
     else if (trigger) wireTriggerConfig(host, tile);
     else {

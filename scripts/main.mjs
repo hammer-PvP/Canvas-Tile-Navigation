@@ -10,6 +10,7 @@ import { registerLabelHooks } from "./label-service.mjs";
 import { initializePartyProvider, registerPartyHooks } from "./party-service.mjs";
 import { initializeTriggerSocket, registerTriggerHooks } from "./trigger-service.mjs";
 import { initializeTransitionSocket, registerTransitionHooks } from "./transition-service.mjs";
+import { registerVisualFXHooks } from "./seqfx.mjs";
 
 Hooks.once("init", () => {
   console.log(`${MODULE_ID} | Initializing`);
@@ -22,6 +23,7 @@ Hooks.once("init", () => {
   registerPartyHooks();
   registerTriggerHooks();
   registerTransitionHooks();
+  registerVisualFXHooks();
 });
 
 Hooks.once("ready", async () => {

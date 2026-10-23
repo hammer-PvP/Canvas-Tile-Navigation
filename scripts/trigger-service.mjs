@@ -12,6 +12,7 @@ import {
   TRIGGER_ZONE_ICON
 } from "./constants.mjs";
 import { requestTriggeredActorTransition } from "./navigation-service.mjs";
+import { emitVisualFX } from "./seqfx.mjs";
 import { resolveScene, resolveTile } from "./route-service.mjs";
 import { tileBounds, tokenBounds } from "./token-service.mjs";
 import {
@@ -641,6 +642,7 @@ async function finalizeTriggerBehavior(trigger, resolution) {
         updates[`flags.${MODULE_ID}.trigger.saveState`] = TRIGGER_SAVE_STATES.OFF;
       }
       await trigger.update(updates, { ctnTriggerState: true });
+      emitVisualFX(trigger, "hazard", resolveToken(resolution.tokenUuid));
       break;
     }
     case TRIGGER_AFTER.REARM_WHEN_EMPTY:
@@ -709,6 +711,7 @@ async function handleResolutionAction(message, action, button = null) {
   if (action === "save-pass" || action === "save-fail") {
     resolution.saveResult = action === "save-pass";
     resolution.saveTotal = null;
+    emitVisualFX(trigger, resolution.saveResult ? "pass" : "fail", token);
     await applyRevealForPhase(trigger, resolution, "save");
     await finalizeTriggerBehavior(trigger, resolution);
     await updateResolutionMessage(message, resolution);
@@ -816,6 +819,7 @@ async function handleTriggerEnter(message) {
   const lock = triggerLockData(token);
   if (lock?.active && lock.triggerUuid === trigger.uuid) return;
 
+  emitVisualFX(trigger, "activation", token);
   const isDirect = data.state === TRIGGER_STATES.REVEALED
     && data.afterTrigger === TRIGGER_AFTER.DIRECT_TRANSITION
     && Boolean(data.transitionSceneUuid && data.transitionArrivalUuid);

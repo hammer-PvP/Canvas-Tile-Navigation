@@ -2,6 +2,21 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.12
+
+### Added
+
+- Optional Sequencer + JB2A Visual FX for CTN Navigation, Arrival, Trigger, and Transition Tiles.
+- A single Enable Visual FX checkbox reveals the contextual FX editor only when enabled.
+- Installed JB2A effect search, per-Tile event selection, a local preview, independently sized and positioned FX, and canvas placement with movable/resizable bounds.
+- Duration modes: natural playback, fixed seconds, activating Token inside area, any Token occupying area, and persistent until reset/state change.
+- Configurable entry fade, instant or faded ending, and one effect per Tile versus independent activations.
+- GM-authoritative event dispatch and selective cleanup by Tile UUID; no bundled JB2A assets or new mandatory dependencies.
+
+### Preserved
+
+- Transition pairing, movement, Trigger state/save/damage, Navigation, Arrivals, party/group, and Route Manager mechanics are unchanged.
+
 ## 1.1.11
 
 ### Fixed

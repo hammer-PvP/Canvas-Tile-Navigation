@@ -4,6 +4,7 @@ import {
   SOCKET_NAME,
   TRIGGER_PERMISSION
 } from "./constants.mjs";
+import { emitVisualFX } from "./seqfx.mjs";
 import {
   destinationArrivalTile,
   navData,
@@ -169,6 +170,8 @@ async function performGMCommit({ tileDocument, targetScene }) {
   gmCommitInProgress = true;
   localNavigationInProgress = true;
 
+  // Play a source Tile's visual activation before leaving that Scene.
+  emitVisualFX(tileDocument, "activation", null);
   try {
     const arrivalTile = destinationArrivalTile(tileDocument);
 
@@ -197,6 +200,7 @@ async function performGMCommit({ tileDocument, targetScene }) {
     }
 
     await ready;
+    if (arrivalTile) emitVisualFX(arrivalTile, "arrival", destination.tokens[0] ?? null);
     emitArrivalMaterialized(destination.tokens, { reason: "gm-navigation" });
 
     // Source cleanup is intentionally delayed until destination materialization
@@ -316,8 +320,10 @@ async function preparePlayerTransition({ tileDocument, requesterId, transitionId
       });
     }, TRANSITION_TIMEOUT_MS);
 
+    emitVisualFX(tileDocument, "activation", null);
     authorityPlayerTransitions.set(transitionId, {
       requesterId,
+      arrivalTileUuid: arrivalTile?.uuid ?? "",
       sourceSceneId: sourceScene.id,
       targetSceneId: targetScene.id,
       actorId: actor.id,
@@ -347,10 +353,11 @@ async function finalizePlayerTransition(message) {
   authorityPlayerLocks.delete(pending.requesterId);
 
   try {
-    emitArrivalMaterialized(
-      pending.targetTokenUuids.map((uuid) => { try { return fromUuidSync(uuid); } catch (_error) { return null; } }).filter((token) => token?.documentName === "Token"),
-      { reason: "player-navigation" }
-    );
+    const arrivedTokens = pending.targetTokenUuids.map((uuid) => {
+      try { return fromUuidSync(uuid); } catch (_error) { return null; }
+    }).filter((token) => token?.documentName === "Token");
+    emitArrivalMaterialized(arrivedTokens, { reason: "player-navigation" });
+    if (pending.arrivalTileUuid) emitVisualFX(resolveTile(pending.arrivalTileUuid), "arrival", arrivedTokens[0] ?? null);
 
     if (pending.cleanupSource) {
       const sourceScene = game.scenes.get(pending.sourceSceneId);
@@ -545,10 +552,9 @@ export async function requestTriggeredActorTransition({ sourceToken, targetScene
     if (groupRepresentation) cleanupSource = false;
 
     if (!requester) {
-      emitArrivalMaterialized(
-        targetTokenUuids.map((uuid) => { try { return fromUuidSync(uuid); } catch (_error) { return null; } }).filter((token) => token?.documentName === "Token"),
-        { reason: "trigger-transition" }
-      );
+      const arrived = targetTokenUuids.map((uuid) => { try { return fromUuidSync(uuid); } catch (_error) { return null; } }).filter((token) => token?.documentName === "Token");
+      emitArrivalMaterialized(arrived, { reason: "trigger-transition" });
+      emitVisualFX(arrivalTile, "arrival", arrived[0] ?? null);
       if (cleanupSource && sourceScene) {
         await deleteActorTokensFromScene(sourceScene, new Set([actor.id]));
       }
@@ -572,6 +578,7 @@ export async function requestTriggeredActorTransition({ sourceToken, targetScene
 
     authorityPlayerTransitions.set(transitionId, {
       requesterId: requester.id,
+      arrivalTileUuid: arrivalTile.uuid,
       sourceSceneId: sourceScene?.id ?? null,
       targetSceneId: targetScene.id,
       actorId: actor.id,

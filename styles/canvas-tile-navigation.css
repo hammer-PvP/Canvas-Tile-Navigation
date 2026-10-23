@@ -288,3 +288,24 @@
   gap: 0.5rem;
   justify-content: flex-end;
 }
+
+/* Optional Sequencer FX controls are entirely collapsed until enabled. */
+.ctn-fx-config [data-ctn-fx-body][hidden],
+.ctn-fx-config [hidden] { display: none !important; }
+.ctn-fx-config .form-group .form-fields { min-width: 0; }
+.ctn-fx-config .form-fields input[type="number"] { min-width: 3.75rem; flex: 1 1 4.5rem; }
+.ctn-fx-config .ctn-fx-file { display: flex; min-width: 0; gap: 0.25rem; }
+.ctn-fx-config .ctn-fx-file input { min-width: 0; flex: 1; }
+.ctn-fx-config .ctn-fx-file button { flex: 0 0 2.2rem; min-width: 2.2rem; }
+.ctn-fx-config .ctn-fx-units { white-space: nowrap; font-size: .78rem; }
+.ctn-fx-separator { opacity: .35; margin: .6rem 0; }
+.ctn-fx-browser { width: min(700px, 90vw); max-height: 76vh; padding: 1rem; border-radius: 7px;
+  background: var(--color-cool-5, #26282d); color: var(--color-text-light-primary, #eee);
+  border: 1px solid var(--color-border-light-tertiary, #888); }
+.ctn-fx-browser::backdrop { background: rgba(0,0,0,.55); }
+.ctn-fx-browser header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .6rem; }
+.ctn-fx-browser header button { width: 2rem; min-width: 2rem; }
+.ctn-fx-browser input { display: block; width: 100%; margin: .35rem 0; }
+.ctn-fx-results { display: flex; flex-direction: column; gap: .25rem; overflow-y: auto; max-height: 52vh; }
+.ctn-fx-results button { text-align: left; font-family: monospace; font-size: .78rem; flex: none;
+  overflow-wrap: anywhere; height: auto; min-height: 2rem; padding: .35rem; }

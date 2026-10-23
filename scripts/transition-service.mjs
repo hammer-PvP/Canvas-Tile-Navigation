@@ -7,6 +7,7 @@ import {
   TRANSITION_STATUS
 } from "./constants.mjs";
 import { resolveTile } from "./route-service.mjs";
+import { emitVisualFX } from "./seqfx.mjs";
 import {
   actorTokensInScene,
   getUserActor,
@@ -891,6 +892,7 @@ async function finishAuthorityPending(message) {
 
   try {
     await deleteSourceToken(pending.sourceSceneId, pending.sourceTokenId);
+    if (pending.targetTileUuid) emitVisualFX(resolveTile(pending.targetTileUuid), "after", resolveToken(pending.targetTokenUuid));
     if (pending.effectEnabled) broadcastEffect(pending.targetTokenUuid, "in");
     emitToUser("transition-complete", pending.targetUserId, {
       transitionId: message.transitionId,
@@ -923,6 +925,7 @@ async function performAuthorityTransition({ sourceTile, sourceToken, requester, 
     return;
   }
   authorityLocks.add(sourceToken.uuid);
+  emitVisualFX(sourceTile, "before", sourceToken);
 
   const effectEnabled = Boolean(sourceData.effectEnabled);
   let preparedTargetTokenUuid = "";
@@ -937,6 +940,7 @@ async function performAuthorityTransition({ sourceTile, sourceToken, requester, 
 
     if (sourceScene.id === targetScene.id) {
       const moved = await moveSameSceneToken(sourceToken, targetTile);
+      emitVisualFX(targetTile, "after", moved);
       if (effectEnabled) broadcastEffect(moved.uuid, "in");
       authorityLocks.delete(sourceToken.uuid);
       localActivationLocks.delete(sourceToken.uuid);
@@ -963,6 +967,7 @@ async function performAuthorityTransition({ sourceTile, sourceToken, requester, 
         if (effectEnabled) await playTransitionEffect(targetToken.uuid, "prepare");
       }
       await deleteSourceToken(sourceScene.id, sourceToken.id);
+      emitVisualFX(targetTile, "after", targetToken);
       if (effectEnabled) broadcastEffect(targetToken.uuid, "in");
       authorityLocks.delete(sourceToken.uuid);
       localActivationLocks.delete(sourceToken.uuid);
@@ -994,6 +999,7 @@ async function performAuthorityTransition({ sourceTile, sourceToken, requester, 
       sourceTokenUuid: sourceToken.uuid,
       targetSceneId: targetScene.id,
       targetTokenUuid: targetToken.uuid,
+      targetTileUuid: targetTile.uuid,
       effectEnabled,
       timer
     });
