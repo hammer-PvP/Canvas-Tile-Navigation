@@ -5,6 +5,7 @@ import {
   isSequencerAvailable, jb2aPaths, playTileFX, stopTileFX
 } from "./seqfx.mjs";
 import { resolveTile } from "./route-service.mjs";
+import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
 import { JB2A_FACETS, indexJB2APaths, facetValues, filterJB2AIndex } from "./jb2a-browser-filters.mjs";
 
 const escape = (value) => foundry.utils.escapeHTML(String(value ?? ""));
@@ -346,7 +347,12 @@ export function wireFXConfig(container, tile, application) {
     if (!isSequencerAvailable()) { ui.notifications.warn(label("MissingSequencer")); return; }
     void playTileFX(tile, { event: cfg.event, preview: true, override: cfg });
   });
-  root.querySelector("[data-ctn-fx-stop]")?.addEventListener("click", () => void stopTileFX(tile));
+  root.querySelector("[data-ctn-fx-stop]")?.addEventListener("click", () => {
+    // Stopping the only visible portal must not leave its remote mechanical
+    // area silently enabled; otherwise Stop Active FX produces a ghost portal.
+    if (effectAreaIsActive(tile)) void setEffectAreaActive(tile, false);
+    else void stopTileFX(tile);
+  });
   root.querySelector("[data-ctn-fx-canvas]")?.addEventListener("click", async () => {
     const cfg = liveConfig(tile, root);
     if (canvas?.scene?.id !== tile.parent?.id) {

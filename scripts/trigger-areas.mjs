@@ -1,5 +1,6 @@
 /** Separate the original activation Tile from the optional Visual FX consequence zone.
- * Effects supply geometry only. Playback never grants/removes mechanical permissions.
+ * FX settings supply geometry and optional lifetime; a GM-authoritative
+ * Effect Area session, not the video player, grants/removes permissions.
  */
 import { tileBounds, tokenBounds } from './token-service.mjs';
 

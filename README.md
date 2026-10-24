@@ -29,6 +29,7 @@ CTN keeps a system-agnostic core whenever Foundry already provides everything re
 - Trigger Tiles for saves, damage, reveal, movement pause, persistent hazards, and Scene transitions.
 - D&D5e native typed damage application.
 - Optional interactive Visual FX footprint for Trigger and Transition Tiles (the visual animation does not define or duplicate mechanics).
+- Visual FX lifetime-driven remote Trigger Effect Areas (v1.1.14): portal mechanics and visuals close together; the triggering Tile can rearm separately.
 - Optional same-Scene Linked Activation: a source Trigger enables a dormant Trigger or Transition Tile; GM can deactivate it manually.
 - Generic CTN damage controls for systems without a dedicated adapter.
 - Designed to coexist with automation modules rather than replace a full automation engine.

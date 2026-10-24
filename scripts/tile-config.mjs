@@ -52,7 +52,7 @@ import {
 } from "./transition-service.mjs";
 import { openDefaultAssetImagePicker } from "./asset-folder.mjs";
 import { fxConfigHTML, wireFXConfig } from "./fx-config.mjs";
-import { stopTileFX } from "./seqfx.mjs";
+import { emitVisualFX, stopTileFX } from "./seqfx.mjs";
 import { linkedData, linkedIsActive, linkedSourceCandidates, setLinkedActive } from "./linked-activation.mjs";
 import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
 
@@ -876,8 +876,8 @@ function wireTriggerConfig(container, tile) {
 
   root.querySelector('[data-ctn-effect-toggle-state]')?.addEventListener('click', async () => {
     const open = !effectAreaIsActive(tile);
-    await setEffectAreaActive(tile, open);
-    if (!open) await stopTileFX(tile);
+    const changed = await setEffectAreaActive(tile, open);
+    if (changed && open) emitVisualFX(tile, "activation");
     tile.sheet?.render?.(true);
   });
   for (const input of root.querySelectorAll('[data-ctn-area-toggle]')) {

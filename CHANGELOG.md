@@ -1,3 +1,13 @@
+## v1.1.14 — Effect Area lifetime and safe portal closure (QA, 2026-10-24)
+
+- The interactive Effect Area follows the Visual FX lifetime configured for `On Activation` rather than remaining mechanically ACTIVE after the animation has ended.
+- Fixed Seconds: closes the portal on its deadline; Natural Animation Duration: closes on normal playback completion (60-second fail-safe if playback completion is lost); While Activating Token Is Inside: follows the activating Token in the original Trigger area; While Area Is Occupied: follows occupancy in the remote FX footprint (waits for first visitor, then closes when the last occupant departs after a short movement-commit grace); Persistent: remains active until GM closes/resets.
+- Each opening has a persisted session ID; stale video callbacks and older chat cards can never reauthorize a new portal or close a newer opening.
+- Closing a portal (including Stop Active FX) stops only its Tile's FX and blocks late manual/automatic transfers. Missing/failed FX launch closes visually governed portals rather than leaving invisible active portals.
+- Existing pre-1.1.14 Effect Areas without a lifecycle session fail closed after upgrade; the GM must reopen/retrigger them.
+- Preserves independent Trigger rearming, original activation Tile, remote Effect Area, On Effect Area Save/Damage/Transition, one-way arrivals and navigation.
+- QA release candidate only; interactive GM/player Foundry V14 + Sequencer/JB2A validation remains necessary.
+
 ## v1.1.13d — Trigger and FX Area separation (QA)
 
 - Trigger activation always belongs to the original Tile, by Token entry or optional double-click; when linked to another Trigger, the existing cross-Tile activation feature remains available at the top of the Trigger configuration.

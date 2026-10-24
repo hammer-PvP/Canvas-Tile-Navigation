@@ -14,7 +14,7 @@ import {
 import { requestTriggeredActorTransition } from "./navigation-service.mjs";
 import { emitVisualFX } from "./seqfx.mjs";
 import { TRIGGER_AREA, containsTriggerArea, tokenInsideTriggerArea, scopedTriggerData, hasEffectConsequences } from "./trigger-areas.mjs";
-import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
+import { effectAreaIsActive, effectAreaSessionId, recordEffectAreaEntry, setEffectAreaActive } from "./effect-area-state.mjs";
 import { activateLinkedTargets, linkedIsActive } from "./linked-activation.mjs";
 import { resolveScene, resolveTile } from "./route-service.mjs";
 import { tileBounds, tokenBounds } from "./token-service.mjs";
@@ -96,6 +96,7 @@ export function defaultTriggerData() {
     transitionMode: "gm",
     activationMode: "enter",
     effectActive: false,
+    effectSession: null,
     saveState: TRIGGER_SAVE_STATES.OFF,
     disableSaveOnPersistentHazard: true,
     saveAbility: "dex",
@@ -511,7 +512,10 @@ function resolutionSaveRequired(data, resolution) {
 function resolutionEligibility(trigger, token, resolution) {
   const area = resolution.area ?? TRIGGER_AREA.SOURCE;
   const data = scopedTriggerData(triggerData(trigger), area);
-  const areaAvailable = area !== TRIGGER_AREA.EFFECT || effectAreaIsActive(trigger);
+  // Old chat cards must not authorize a transfer after a portal closes and
+  // reopens as a *different* effect-area session.
+  const areaAvailable = area !== TRIGGER_AREA.EFFECT || (effectAreaIsActive(trigger)
+    && resolution.effectSessionId === effectAreaSessionId(trigger));
   const actor = actorOfToken(token);
   const components = getTriggerDamageComponents(data);
   const saveRequired = resolutionSaveRequired(data, resolution);
@@ -646,6 +650,7 @@ async function createResolutionMessage(trigger, token, requesterId, { mode = "in
   const data = scopedTriggerData(triggerData(trigger), area);
   const resolution = {
     area,
+    effectSessionId: area === TRIGGER_AREA.EFFECT ? effectAreaSessionId(trigger) : null,
     id: foundry.utils.randomID(),
     mode,
     triggerUuid: trigger.uuid,
@@ -830,6 +835,11 @@ async function handleResolutionAction(message, action, button = null) {
   }
 
   if (action === "move-token") {
+    if (!resolutionEligibility(trigger, token, resolution).transitionEligible) {
+      ui.notifications.warn(game.i18n.localize("CTN.Trigger.AreaNoLongerActive"));
+      await updateResolutionMessage(message, resolution);
+      return;
+    }
     const targetScene = resolveScene(data.transitionSceneUuid);
     const arrivalTile = resolveTile(data.transitionArrivalUuid);
     if (!targetScene || !arrivalTile || arrivalTile.parent?.id !== targetScene.id) {
@@ -911,8 +921,18 @@ async function handleTriggerEnter(message) {
   // Saving Throw/Damage. Its consequences and their UI remain unchanged.
   if (area === TRIGGER_AREA.SOURCE) {
     await activateLinkedTargets(trigger);
-    if (hasEffectConsequences(data)) await setEffectAreaActive(trigger, true);
-    emitVisualFX(trigger, "activation", token);
+    const hasRemoteArea = hasEffectConsequences(data);
+    const alreadyOpen = hasRemoteArea && effectAreaIsActive(trigger);
+    if (hasRemoteArea) await setEffectAreaActive(trigger, true, { tokenUuid: token.uuid });
+    // One portal session owns the opening animation even if the source plate
+    // is stepped on repeatedly while that portal remains active.
+    if (!alreadyOpen) emitVisualFX(trigger, "activation", token);
+  }
+  if (area === TRIGGER_AREA.EFFECT) {
+    // An occupant starts the occupied-area phase. It is not the source plate
+    // and never re-triggers the portal-opening event.
+    await recordEffectAreaEntry(trigger);
+    if (!effectAreaIsActive(trigger)) return;
   }
   const isDirect = area === TRIGGER_AREA.SOURCE && data.state === TRIGGER_STATES.REVEALED
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION

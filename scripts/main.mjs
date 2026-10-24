@@ -11,6 +11,7 @@ import { initializePartyProvider, registerPartyHooks } from "./party-service.mjs
 import { initializeTriggerSocket, registerTriggerHooks } from "./trigger-service.mjs";
 import { initializeTransitionSocket, registerTransitionHooks } from "./transition-service.mjs";
 import { registerVisualFXHooks } from "./seqfx.mjs";
+import { registerEffectAreaLifetimeHooks } from "./effect-area-state.mjs";
 
 Hooks.once("init", () => {
   console.log(`${MODULE_ID} | Initializing`);
@@ -24,6 +25,7 @@ Hooks.once("init", () => {
   registerTriggerHooks();
   registerTransitionHooks();
   registerVisualFXHooks();
+  registerEffectAreaLifetimeHooks();
 });
 
 Hooks.once("ready", async () => {

@@ -1,6 +1,7 @@
 /**
  * Optional Sequencer/JB2A visual integration. CTN Tiles remain the exclusive
- * authority for mechanics; everything in this file is visual only.
+ * authority for mechanics; this service reports playback completion to the
+ * independent GM-authoritative Effect Area lifecycle.
  */
 import { MODULE_ID, SOCKET_NAME } from "./constants.mjs";
 import { isNavigationLink, isArrivalPoint, resolveTile } from "./route-service.mjs";
@@ -8,6 +9,8 @@ import { isTransitionTile } from "./transition-service.mjs";
 import { isTriggerTile } from "./trigger-service.mjs";
 import { tileBounds } from "./token-service.mjs";
 import { tokenInsideInteraction } from "./interaction-area.mjs";
+import { effectAreaIsActive, effectAreaSessionId, effectAreaVisualFinished, setEffectAreaActive } from "./effect-area-state.mjs";
+import { hasEffectConsequences } from "./trigger-areas.mjs";
 
 const FLAG = "visualFX";
 const SEQ_FX_EVENT = "ctnVisualFXEvent";
@@ -132,6 +135,7 @@ function scheduleRemoteTimeout(tile, name) {
     if (!record.acknowledged) {
       console.warn(`${MODULE_ID} | Remote Visual FX was not acknowledged: ${name}`);
       forgetRecord(tile, name);
+      if (record.governedSessionId) void setEffectAreaActive(tile, false, { expectedSessionId: record.governedSessionId });
     }
   }, REMOTE_ACK_TIMEOUT_MS);
 }
@@ -235,8 +239,15 @@ export async function playTileFX(tile, { event, tokenUuid = "", preview = false,
   if (!preview && cfg.repeat === "one" && records.size) return false;
   const name = preview ? `ctn-preview-${foundry.utils.randomID()}` : effectName(tile);
   const now = Date.now();
+  // When a Trigger opens a remote Effect Area, one session owns its visual
+  // and mechanical lifetime. Do not run the separate source-Tile occupancy
+  // watchdog against this FX (it previously made portals flash and disappear).
+  const governedSessionId = !preview && isTriggerTile(tile)
+    && hasEffectConsequences(tile.getFlag(MODULE_ID, "trigger"))
+    && effectAreaIsActive(tile) && cfg.event === "activation"
+    ? effectAreaSessionId(tile) : null;
   if (!preview) records.set(name, {
-    lifetime: cfg.lifetime, tokenUuid, runnerId: null, timer: null,
+    lifetime: cfg.lifetime, tokenUuid, runnerId: null, timer: null, governedSessionId,
     startedAt: now, graceUntil: now + INITIAL_OCCUPANCY_GRACE_MS,
     acknowledged: false,
     maxRuntimeMs: cfg.lifetime === FX_LIFETIMES.SECONDS
@@ -256,6 +267,7 @@ export async function playTileFX(tile, { event, tokenUuid = "", preview = false,
     } else if (!preview && canvas?.scene?.id !== tile.parent.id) {
       // No client with this scene loaded; never draw on the wrong scene.
       forgetRecord(tile, name);
+      if (governedSessionId) void setEffectAreaActive(tile, false, { expectedSessionId: governedSessionId });
       return false;
     } else {
       // Do not await the lifetime of a persistent effect. A Sequence's play()
@@ -263,21 +275,26 @@ export async function playTileFX(tile, { event, tokenUuid = "", preview = false,
       void executeSequence(tile, cfg, name, { preview }).then(() => {
         if (!preview && [FX_LIFETIMES.NATURAL, FX_LIFETIMES.SECONDS].includes(cfg.lifetime)) {
           forgetRecord(tile, name);
+          if (cfg.lifetime === FX_LIFETIMES.NATURAL && governedSessionId) {
+            void effectAreaVisualFinished(tile, governedSessionId);
+          }
         }
       }).catch((error) => {
         console.error(`${MODULE_ID} | Visual FX failed`, error);
         if (!preview) forgetRecord(tile, name);
+        if (governedSessionId) void setEffectAreaActive(tile, false, { expectedSessionId: governedSessionId });
       });
     }
     // No token exists for navigation/arrival events. TOKEN lifetime with no
     // activating token is a short activation FX, not a permanent orphan.
     if (!preview && cfg.lifetime === FX_LIFETIMES.TOKEN && !tokenUuid) {
       const record = records.get(name);
-      if (record) record.timer = setTimeout(() => void expire(tile, name), INITIAL_OCCUPANCY_GRACE_MS);
+      if (record && !governedSessionId) record.timer = setTimeout(() => void expire(tile, name), INITIAL_OCCUPANCY_GRACE_MS);
     }
     return true;
   } catch (error) {
     forgetRecord(tile, name);
+    if (governedSessionId) void setEffectAreaActive(tile, false, { expectedSessionId: governedSessionId });
     console.warn(`${MODULE_ID} | Visual FX activation failed`, error);
     return false;
   }
@@ -289,7 +306,7 @@ function checkLifetimeForTile(tile) {
   if (!records?.size) return;
   const now = Date.now();
   for (const [name, record] of records) {
-    if (ENDING.has(name) || now < record.graceUntil) continue;
+    if (ENDING.has(name) || now < record.graceUntil || record.governedSessionId) continue;
     if (record.lifetime === FX_LIFETIMES.TOKEN) {
       const token = lookupToken(record.tokenUuid);
       if (!tokenInTile(token, tile)) void expire(tile, name);
@@ -309,13 +326,25 @@ function checkLifetimesForScene(scene) {
 /** Called only after the existing CTN flow accepts an actual action. */
 export function fireTileFXEvent(tile, event, token = null) {
   if (!tile || !isAuthority()) return;
-  // Coalesce duplicate parallel hooks, not distinct users.
-  const key = `${tile.uuid}/${event}/${token?.uuid ?? ""}`;
+  // New Effect Area sessions are distinct even when the same Token reenters
+  // within the short duplicate-hook debounce window.
+  const key = `${tile.uuid}/${event}/${token?.uuid ?? ""}/${effectAreaSessionId(tile) ?? "no-session"}`;
   const now = Date.now();
-  if ((LAST_EVENTS.get(key) ?? 0) + 40 < now) {
-    LAST_EVENTS.set(key, now);
-    void playTileFX(tile, { event, tokenUuid: token?.uuid ?? "" });
-  }
+  if ((LAST_EVENTS.get(key) ?? 0) + 40 >= now) return;
+  LAST_EVENTS.set(key, now);
+  const cfg = fxConfig(tile);
+  // A second activation must not treat the normal One Active Effect dedupe
+  // as a playback failure and close the first character's still-open portal.
+  if (cfg.repeat === "one" && ACTIVE.get(tile.uuid)?.size) return;
+  const expectedSessionId = event === 'activation' && cfg.event === event && cfg.enabled
+    && effectAreaIsActive(tile) ? effectAreaSessionId(tile) : null;
+  void playTileFX(tile, { event, tokenUuid: token?.uuid ?? "" }).then(started => {
+    // If the portal's required opening animation could not start (JB2A not
+    // installed, wrong Database path, no viewer), leave no invisible portal.
+    if (!started && expectedSessionId) {
+      void setEffectAreaActive(tile, false, { expectedSessionId });
+    }
+  });
 }
 
 function onTileUpdate(tile, changes, operation = {}) {
@@ -330,6 +359,9 @@ function onTileUpdate(tile, changes, operation = {}) {
         || data.active === false || data.active === "false")) void stopTileFX(tile);
   }
   if (cfgChanges) {
+    // Changing the FX configuration invalidates the old active portal
+    // session, preventing invisible transfers from a stale rectangle.
+    if (isTriggerTile(tile) && effectAreaIsActive(tile)) void setEffectAreaActive(tile, false);
     // A new effect/position/duration replaces the previous occurrence. Old
     // effect names must not survive after saving a changed configuration.
     void stopTileFX(tile);
@@ -382,13 +414,20 @@ export function registerVisualFXHooks() {
         const record = tile && ACTIVE.get(tile.uuid)?.get(message.name);
         if (!record || record.runnerId !== message.senderId) return;
         if (message.status === "ended") {
-          if ([FX_LIFETIMES.NATURAL, FX_LIFETIMES.SECONDS].includes(record.lifetime)) forgetRecord(tile, message.name);
+          if ([FX_LIFETIMES.NATURAL, FX_LIFETIMES.SECONDS].includes(record.lifetime)) {
+            forgetRecord(tile, message.name);
+            if (record.lifetime === FX_LIFETIMES.NATURAL && record.governedSessionId)
+              void effectAreaVisualFinished(tile, record.governedSessionId);
+          }
           return;
         }
         if (record.timer) clearTimeout(record.timer);
         record.timer = null;
         record.acknowledged = message.status === "started";
-        if (!record.acknowledged) forgetRecord(tile, message.name);
+        if (!record.acknowledged) {
+          forgetRecord(tile, message.name);
+          if (record.governedSessionId) void setEffectAreaActive(tile, false, { expectedSessionId: record.governedSessionId });
+        }
         else if (record.maxRuntimeMs > 0) {
           // Completion ACK is preferred; this fallback prevents stale dedupe
           // locks when a remote client closes mid-animation.

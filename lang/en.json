@@ -366,5 +366,6 @@
   "CTN.Trigger.SearchScene": "Filter Scenes...",
   "CTN.Trigger.SearchArrival": "Filter Arrivals...",
   "CTN.Trigger.ClickNeedsToken": "Select a Token within one grid cell of this Trigger to use it.",
-  "CTN.Trigger.HiddenClickHint": "A hidden Trigger cannot be double-clicked by players. Make the lever visible or use token entry."
+  "CTN.Trigger.HiddenClickHint": "A hidden Trigger cannot be double-clicked by players. Make the lever visible or use token entry.",
+  "CTN.Trigger.AreaNoLongerActive": "The portal is no longer active. Reopen it before transferring this Token."
 }

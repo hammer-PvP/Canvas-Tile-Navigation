@@ -366,5 +366,6 @@
   "CTN.Trigger.SearchScene": "Filtrar Cenas...",
   "CTN.Trigger.SearchArrival": "Filtrar Chegadas...",
   "CTN.Trigger.ClickNeedsToken": "Selecione um Token a até uma célula deste gatilho para interagir.",
-  "CTN.Trigger.HiddenClickHint": "Jogadores não conseguem dar duplo clique em um gatilho oculto. Deixe a alavanca visível ou use entrada do Token."
+  "CTN.Trigger.HiddenClickHint": "Jogadores não conseguem dar duplo clique em um gatilho oculto. Deixe a alavanca visível ou use entrada do Token.",
+  "CTN.Trigger.AreaNoLongerActive": "O portal não está mais ativo. Reabra-o antes de transferir este Token."
 }
