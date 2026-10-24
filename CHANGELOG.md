@@ -2,6 +2,12 @@
 
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
+## 1.1.13a — PixiJS 7 canvas editor fix (2026-10-24)
+
+- Fix FX footprint editor drawing and resize handles in Foundry V14 (PixiJS 7).
+- Draw the editor in the canvas interface layer and clean up the overlay on close/error.
+- No change to Tile hitboxes, movement behavior, or other feature configuration.
+
 ## 1.1.13 — Visual FX refinements (2026-10-23)
 
 - Carries forward the Trigger Tile progressive-option checkboxes and dependency protections approved in the v1.1.12 QA build.

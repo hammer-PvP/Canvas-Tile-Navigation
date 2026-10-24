@@ -443,6 +443,8 @@ function destroyPicker() {
   window.removeEventListener("pointerup", p.up, true);
   window.removeEventListener("keydown", p.keydown, true);
   p.toolbar?.remove();
+  // Detach explicitly so the overlay is removed even with external PIXI wrappers.
+  p.graphics?.parent?.removeChild?.(p.graphics);
   p.graphics?.destroy?.();
   pickerSession = null;
 }
@@ -472,16 +474,23 @@ function pickerRender(session) {
   const corners = pickerCorners(b);
   const zoom = Math.max(0.05, Math.abs(canvas.stage?.scale?.x ?? 1));
   const radius = 7 / zoom;
+  // Foundry V14 uses PixiJS 7, NOT the PixiJS 8 rect/fill/stroke API.
+  // The previous code threw before drawing the footprint or dimensions.
   g.clear();
-  g.rect(b.left, b.top, b.right - b.left, b.bottom - b.top)
-    .fill({ color: 0x64B5F6, alpha: 0.13 })
-    .stroke({ color: 0x64B5F6, width: 2 / zoom, alpha: 1 });
+  g.lineStyle(2 / zoom, 0x64B5F6, 1);
+  g.beginFill(0x64B5F6, 0.13);
+  g.drawRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+  g.endFill();
   for (const c of Object.values(corners)) {
-    g.rect(c.x - radius, c.y - radius, radius * 2, radius * 2)
-      .fill({ color: 0xFFCC80, alpha: 0.98 })
-      .stroke({ color: 0x15283A, width: 1.5 / zoom });
+    g.lineStyle(1.5 / zoom, 0x15283A, 1);
+    g.beginFill(0xFFCC80, 0.98);
+    g.drawRect(c.x - radius, c.y - radius, radius * 2, radius * 2);
+    g.endFill();
   }
-  g.circle(state.x, state.y, Math.max(2, 3 / zoom)).fill(0x64B5F6);
+  g.lineStyle(0);
+  g.beginFill(0x64B5F6, 1);
+  g.drawCircle(state.x, state.y, Math.max(2, 3 / zoom));
+  g.endFill();
   session.dimensions.textContent = `${state.width.toFixed(2)} × ${state.height.toFixed(2)} ${session.unitLabel}`;
 }
 /**
@@ -493,9 +502,13 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
   cancelPicker();
   const canvasElement = canvas.app?.canvas ?? canvas.app?.view;
   if (!(canvasElement instanceof HTMLCanvasElement)) return false;
+  // The interface group renders above the scene and shares scene coordinates.
+  // Adding directly to the stage can place the editor beneath Foundry groups.
+  if (!canvas.interface) return false;
   const graphics = new PIXI.Graphics();
   graphics.eventMode = "none";
-  canvas.stage.addChild(graphics);
+  graphics.zIndex = 100000;
+  canvas.interface.addChild(graphics);
   const center = fxCenter(tile, cfg);
   const state = { x: center.x, y: center.y, width: cfg.width, height: cfg.height };
   const unitLabel = game.i18n.localize("CTN.FX.GridUnits");
@@ -575,6 +588,13 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
   window.addEventListener("pointermove", session.move, true);
   window.addEventListener("pointerup", session.up, true);
   window.addEventListener("keydown", session.keydown, true);
-  pickerRender(session);
+  try {
+    pickerRender(session);
+  } catch (error) {
+    // Never leave an Apply/Cancel editor with an invisible, unusable overlay.
+    console.error(`${MODULE_ID} | Could not draw Visual FX canvas editor`, error);
+    destroyPicker();
+    return false;
+  }
   return true;
 }
