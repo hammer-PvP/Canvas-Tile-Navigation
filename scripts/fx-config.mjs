@@ -21,7 +21,7 @@ export function fxConfigHTML(tile) {
   const options = [
     ["activation", "OnActivation"], ["pass", "OnPASS"], ["fail", "OnFAIL"],
     ["hazard", "OnHazard"], ["before", "BeforeTransition"], ["after", "AfterArrival"],
-    ["arrival", "OnArrival"]
+    ["arrival", "OnArrival"], ["linked", "OnLinkedActivation"]
   ];
   const eventOptions = options.filter(([id]) => fxEvents.includes(id))
     .map(([id, key]) => opt(id, label(key), cfg.event)).join("");
@@ -62,6 +62,11 @@ export function fxConfigHTML(tile) {
       <div class="form-group"><label>${escape(label("CanvasEditor"))}</label><div class="form-fields">
         <button type="button" data-ctn-fx-canvas><i class="fa-solid fa-up-down-left-right"></i> ${escape(label("EditCanvas"))}</button></div></div>
       <p class="hint">${escape(label("CanvasHint"))}</p>
+      ${["trigger", "transition"].includes(cfg.kind) ? `<div class="form-group ctn-fx-interaction"><label>${escape(label("InteractionArea"))}</label>
+        <div class="form-fields"><input type="hidden" data-ctn-fx-interaction-value name="${field("interactionAtFX")}" value="${cfg.interactionAtFX ? "true" : "false"}">
+          <label class="ctn-fx-interaction-choice"><input type="checkbox" data-ctn-fx-interaction ${cfg.interactionAtFX ? "checked" : ""}>
+          ${escape(label("UseFXArea"))}</label></div></div>
+        <p class="hint">${escape(label("InteractionHint"))}</p>` : ""}
       <hr class="ctn-fx-separator">
       <div class="form-group"><label>${escape(label("Lifetime"))}</label><div class="form-fields">
         <select data-ctn-fx-lifetime name="${field("lifetime")}">${lifetimes}</select></div></div>
@@ -91,6 +96,7 @@ function liveConfig(tile, root) {
   return {
     ...cfg,
     enabled: root.querySelector("[data-ctn-fx-enabled]")?.checked ?? cfg.enabled,
+    interactionAtFX: root.querySelector("[data-ctn-fx-interaction]")?.checked ?? cfg.interactionAtFX,
     effect: get("effect") ?? cfg.effect,
     event: select("event") ?? cfg.event,
     position: select("position") ?? cfg.position,
@@ -312,6 +318,13 @@ export function wireFXConfig(container, tile, application) {
   const position = root.querySelector("[data-ctn-fx-position]");
   const lifetime = root.querySelector("[data-ctn-fx-lifetime]");
   const ending = root.querySelector("[data-ctn-fx-end-mode]");
+  const interactionToggle = root.querySelector("[data-ctn-fx-interaction]");
+  const interactionValue = root.querySelector("[data-ctn-fx-interaction-value]");
+  interactionToggle?.addEventListener("change", () => {
+    if (!interactionValue) return;
+    interactionValue.value = interactionToggle.checked ? "true" : "false";
+    interactionValue.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   const refresh = () => {
     enabledField.value = enabled.checked ? "true" : "false";
     body.hidden = !enabled.checked;

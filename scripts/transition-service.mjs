@@ -8,6 +8,8 @@ import {
 } from "./constants.mjs";
 import { resolveTile } from "./route-service.mjs";
 import { emitVisualFX } from "./seqfx.mjs";
+import { interactionBounds, interactionContainsPoint, tokenInsideInteraction } from "./interaction-area.mjs";
+import { linkedIsActive } from "./linked-activation.mjs";
 import {
   actorTokensInScene,
   getUserActor,
@@ -379,16 +381,7 @@ function canvasPoint(clientX, clientY) {
 }
 
 function tileContainsPoint(tile, point) {
-  if (tile?.shape?.testPoint) {
-    try {
-      return Boolean(tile.shape.testPoint(point));
-    } catch (_error) {
-      // Fall through to rectangular bounds.
-    }
-  }
-  const bounds = tileBounds(tile);
-  return point.x >= bounds.x && point.x <= bounds.x + bounds.width
-    && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  return interactionContainsPoint(tile, point);
 }
 
 function isAbove(candidate, current) {
@@ -408,7 +401,7 @@ function getTransitionAt(clientX, clientY) {
   if (!point) return null;
   let best = null;
   for (const tile of transitionCache) {
-    if (!visibleToCurrentUser(tile) || !tileContainsPoint(tile, point)) continue;
+    if (!linkedIsActive(tile) || !visibleToCurrentUser(tile) || !tileContainsPoint(tile, point)) continue;
     if (isAbove(tile, best)) best = tile;
   }
   return best;
@@ -425,7 +418,7 @@ function tokenWithinTransitionRange(token, tile) {
   const gridSize = Number(tile.parent?.grid?.size) || 100;
   const gridless = tile.parent?.grid?.type === CONST.GRID_TYPES.GRIDLESS;
   const maxGap = gridless ? gridSize : 3;
-  return rectGap(tokenBounds(token), tileBounds(tile)) <= maxGap;
+  return rectGap(tokenBounds(token), interactionBounds(tile)) <= maxGap;
 }
 
 function tokenActor(token) {
@@ -454,7 +447,7 @@ function tokenForClickActivation(user, tile) {
 
 function validateClickableActivation(tile, method) {
   const data = transitionData(tile);
-  if (!data || data.activation !== method) return false;
+  if (!data || data.activation !== method || !linkedIsActive(tile)) return false;
   if (transitionStatus(tile) !== TRANSITION_STATUS.CONNECTED) {
     notify(transitionStatus(tile) === TRANSITION_STATUS.BROKEN
       ? "CTN.Transition.BrokenNotification"
@@ -540,7 +533,7 @@ function tokenCenterAt(token, position) {
 }
 
 function tokenInsideTransition(token, tile, position = null) {
-  return tileContainsPoint(tile, tokenCenterAt(token, position));
+  return tokenInsideInteraction(token, tile, position);
 }
 
 function firstEntryOnMovement(token, tile, movement) {
@@ -571,7 +564,7 @@ function firstCrossedTransition(token, movement) {
   let best = null;
   for (const tile of [...(token?.parent?.tiles ?? [])].filter(isTransitionTile)) {
     const data = transitionData(tile);
-    if (data?.activation !== TRANSITION_ACTIVATIONS.ENTER) continue;
+    if (data?.activation !== TRANSITION_ACTIVATIONS.ENTER || !linkedIsActive(tile)) continue;
     // Hidden Transition Tiles must still function for Enter Area.
     // Visibility only blocks pointer-based activation because there is
     // nothing visible for the player to click.
@@ -866,7 +859,7 @@ function failActivation(requesterId, tokenUuid, reason = "CTN.Transition.Failed"
 
 function validateAuthorityRequest({ sourceTile, sourceToken, requester, method }) {
   const data = transitionData(sourceTile);
-  if (!data || data.activation !== method) return false;
+  if (!data || data.activation !== method || !linkedIsActive(sourceTile)) return false;
   if (transitionStatus(sourceTile) !== TRANSITION_STATUS.CONNECTED) return false;
   if (!requester || !sourceToken || sourceToken.parent?.id !== sourceTile.parent?.id) return false;
   if (!requester.isGM) {
@@ -1026,7 +1019,7 @@ async function performAuthorityTransition({ sourceTile, sourceToken, requester, 
 export async function requestTransitionActivation(tile, token, method, { alreadyLocked = false } = {}) {
   if (!tile || !token) return false;
   const data = transitionData(tile);
-  if (!data || data.activation !== method) {
+  if (!data || data.activation !== method || !linkedIsActive(tile)) {
     localActivationLocks.delete(token.uuid);
     return false;
   }

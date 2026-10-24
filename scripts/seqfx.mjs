@@ -6,7 +6,8 @@ import { MODULE_ID, SOCKET_NAME } from "./constants.mjs";
 import { isNavigationLink, isArrivalPoint, resolveTile } from "./route-service.mjs";
 import { isTransitionTile } from "./transition-service.mjs";
 import { isTriggerTile } from "./trigger-service.mjs";
-import { tileBounds, tokenBounds } from "./token-service.mjs";
+import { tileBounds } from "./token-service.mjs";
+import { tokenInsideInteraction } from "./interaction-area.mjs";
 
 const FLAG = "visualFX";
 const SEQ_FX_EVENT = "ctnVisualFXEvent";
@@ -56,8 +57,8 @@ export function fxKind(tile) {
 }
 export function fxEventsFor(tile) {
   switch (fxKind(tile)) {
-    case "trigger": return ["activation", "pass", "fail", "hazard"];
-    case "transition": return ["before", "after"];
+    case "trigger": return ["activation", "pass", "fail", "hazard", "linked"];
+    case "transition": return ["before", "after", "linked"];
     case "navigation": return ["activation"];
     case "arrival": return ["arrival"];
     default: return [];
@@ -70,6 +71,7 @@ export function fxConfig(tile) {
   return {
     enabled: raw.enabled === true || raw.enabled === "true",
     effect: typeof raw.effect === "string" ? raw.effect.trim() : "",
+    interactionAtFX: raw.interactionAtFX === true || raw.interactionAtFX === "true",
     event: valid(raw.event, events, events[0] ?? "activation"),
     position: valid(raw.position, ["tile", "custom", "other"], "tile"),
     point: { x: n(raw.point?.x, 0, -1000000, 1000000), y: n(raw.point?.y, 0, -1000000, 1000000) },
@@ -134,15 +136,7 @@ function scheduleRemoteTimeout(tile, name) {
   }, REMOTE_ACK_TIMEOUT_MS);
 }
 function tokenInTile(token, tile) {
-  if (!token || token.parent?.id !== tile.parent?.id) return false;
-  const rect = tokenBounds(token);
-  const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  if (tile.shape?.testPoint) {
-    try { return Boolean(tile.shape.testPoint(center)); } catch (_error) { /* rectangle fallback */ }
-  }
-  const area = tileBounds(tile);
-  return center.x >= area.x && center.y >= area.y
-    && center.x <= area.x + area.width && center.y <= area.y + area.height;
+  return tokenInsideInteraction(token, tile);
 }
 function anyOccupant(tile) {
   return [...(tile.parent?.tokens ?? [])].some((token) => tokenInTile(token, tile));
@@ -324,10 +318,17 @@ export function fireTileFXEvent(tile, event, token = null) {
   }
 }
 
-function onTileUpdate(tile, changes) {
+function onTileUpdate(tile, changes, operation = {}) {
   if (!isAuthority()) return;
   const cfgChanges = Object.keys(changes).some((k) => k.includes("visualFX"))
     || Boolean(changes.flags?.[MODULE_ID]?.visualFX);
+  const linkedChanged = Object.keys(changes).some((k) => k.includes("linkedActivation"))
+    || Boolean(changes.flags?.[MODULE_ID]?.linkedActivation);
+  if (linkedChanged && !operation.ctnLinkedState) {
+    const data = tile.getFlag(MODULE_ID, "linkedActivation");
+    if (data && (data.enabled === false || data.enabled === "false"
+        || data.active === false || data.active === "false")) void stopTileFX(tile);
+  }
   if (cfgChanges) {
     // A new effect/position/duration replaces the previous occurrence. Old
     // effect names must not survive after saving a changed configuration.

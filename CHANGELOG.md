@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.13c — Interactive Visual FX area and Linked Activation (QA, 2026-10-24)
+
+- Optional checkbox on Trigger/Transition Tiles: use the Visual FX rectangle as the **single** interaction area instead of the original Tile bounds. Existing Save, Damage, Transition, pairing and activation gestures remain authoritative.
+- Same-scene Linked Activation: an existing Trigger can awaken a dormant Trigger or Transition Tile, without introducing a new macro system or duplicating mechanics. GM can toggle active state manually.
+- New optional Visual FX event `On Linked Activation`, suitable for persistent portal/hazard FX. Sequencer remains optional for the mechanics.
+- Old Tiles remain configured for their original Tile area with Linked Activation OFF.
+- QA only: validate on real Foundry V14 with GM/player clients, collisions, hidden Tiles, Scene changes and Sequencer lifetime.
+
 ## 1.1.13b — JB2A browser filters and paging (QA, 2026-10-24)
 
 - Search is performed over the entire installed JB2A Sequencer Database, with 100 results rendered per page rather than a hard 180-item cap.

@@ -52,6 +52,7 @@ import {
 } from "./transition-service.mjs";
 import { openDefaultAssetImagePicker } from "./asset-folder.mjs";
 import { fxConfigHTML, wireFXConfig } from "./fx-config.mjs";
+import { linkedData, linkedIsActive, linkedSourceCandidates, setLinkedActive } from "./linked-activation.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 
@@ -602,6 +603,59 @@ function wireTransitionConfig(container, tile) {
   });
 }
 
+/** Linked activation augments existing Trigger/Transition Tiles; mechanics stay in their native forms. */
+function linkedConfigHTML(tile) {
+  const data = linkedData(tile);
+  const actuallyActive = linkedIsActive(tile);
+  const base = `flags.${MODULE_ID}.linkedActivation`;
+  const sources = linkedSourceCandidates(tile);
+  const options = sources.map((other) => option(other.uuid,
+    `${other.parent?.name ?? ""} — ${other.name ?? other.id}`, data.sourceTileUuid)).join("");
+  const validSource = sources.some((other) => other.uuid === data.sourceTileUuid);
+  const missing = data.sourceTileUuid && !validSource;
+  return `<fieldset class="ctn-config ctn-linked-config" data-ctn-linked-config>
+    <legend><i class="fa-solid fa-link"></i> ${escapeHTML(localized("CTN.Linked.Title"))}</legend>
+    <label class="ctn-linked-toggle"><input type="hidden" data-ctn-linked-enabled-value name="${base}.enabled" value="${data.enabled ? "true" : "false"}">
+      <input type="checkbox" data-ctn-linked-enabled ${data.enabled ? "checked" : ""}>
+      ${escapeHTML(localized("CTN.Linked.Enable"))}</label>
+    <div data-ctn-linked-body ${data.enabled ? "" : "hidden"}>
+      <div class="form-group"><label>${escapeHTML(localized("CTN.Linked.Source"))}</label>
+        <div class="form-fields"><select name="${base}.sourceTileUuid" data-ctn-linked-source>
+          ${option("", localized("CTN.Linked.ChooseSource"), data.sourceTileUuid)}
+          ${missing ? `<option selected disabled value="${escapeHTML(data.sourceTileUuid)}">${escapeHTML(localized("CTN.Linked.MissingSource"))}</option>` : ""}
+          ${options}</select></div></div>
+      <div class="ctn-linked-status"><span>${escapeHTML(localized("CTN.Linked.Status"))}:
+        <b>${escapeHTML(localized(actuallyActive ? "CTN.Linked.Active" : "CTN.Linked.Inactive"))}</b></span>
+        <button type="button" data-ctn-linked-toggle-state ${!validSource ? "disabled" : ""}>
+          ${escapeHTML(localized(data.active ? "CTN.Linked.Deactivate" : "CTN.Linked.Activate"))}</button></div>
+      <p class="hint">${escapeHTML(localized("CTN.Linked.Hint"))}</p>
+    </div>
+  </fieldset>`;
+}
+
+function wireLinkedConfig(container, tile) {
+  const root = container.querySelector("[data-ctn-linked-config]");
+  if (!root) return;
+  const checkbox = root.querySelector("[data-ctn-linked-enabled]");
+  const field = root.querySelector("[data-ctn-linked-enabled-value]");
+  const body = root.querySelector("[data-ctn-linked-body]");
+  const refresh = () => {
+    field.value = checkbox.checked ? "true" : "false";
+    body.hidden = !checkbox.checked;
+  };
+  checkbox.addEventListener("change", () => {
+    refresh(); field.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  root.querySelector("[data-ctn-linked-toggle-state]")?.addEventListener("click", async () => {
+    // State operations require the source selection to have been saved first.
+    const data = linkedData(tile);
+    if (!data.enabled || !data.sourceTileUuid) return;
+    await setLinkedActive(tile, !data.active);
+    tile.sheet?.render?.(true);
+  });
+  refresh();
+}
+
 function nativeTextureField(form) {
   return form.querySelector('file-picker[name="texture.src"]')
     ?? form.querySelector('input[name="texture.src"]');
@@ -935,7 +989,8 @@ export function registerTileConfigHooks() {
         ? arrivalConfigHTML(tile, nav)
         : linkConfigHTML(tile, nav);
 
-    const html = `${(transition || trigger) ? tileImageConfigHTML(tile) : ""}${configHTML}${fxConfigHTML(tile)}`;
+    const html = `${(transition || trigger) ? tileImageConfigHTML(tile) : ""}${configHTML}`
+      + `${(transition || trigger) ? linkedConfigHTML(tile) : ""}${fxConfigHTML(tile)}`;
     let host = injectCtnTab(application, form, html);
 
     // Safety fallback: if a future Foundry TileConfig changes its tab markup,
@@ -953,6 +1008,7 @@ export function registerTileConfigHooks() {
 
     if (transition || trigger) wireAssetConfig(host, tile);
     wireFXConfig(host, tile, application);
+    if (transition || trigger) wireLinkedConfig(host, tile);
     if (transition) wireTransitionConfig(host, tile);
     else if (trigger) wireTriggerConfig(host, tile);
     else {
@@ -962,6 +1018,17 @@ export function registerTileConfigHooks() {
   });
 
   Hooks.on("preUpdateTile", (tile, changes) => {
+    const linkBase = `flags.${MODULE_ID}.linkedActivation`;
+    const oldLink = linkedData(tile);
+    const newSource = getSubmittedValue(changes, `${linkBase}.sourceTileUuid`, oldLink.sourceTileUuid);
+    const newEnabled = getSubmittedValue(changes, `${linkBase}.enabled`, oldLink.enabled);
+    const sourceChanged = hasSubmittedValue(changes, `${linkBase}.sourceTileUuid`)
+      && newSource !== oldLink.sourceTileUuid;
+    const activated = newEnabled === true || newEnabled === "true";
+    if (sourceChanged || (activated && !oldLink.enabled) || !activated) {
+      // New links always start sleeping; disabling clears persisted active state.
+      foundry.utils.setProperty(changes, `${linkBase}.active`, false);
+    }
     const trigger = triggerData(tile);
     if (trigger) {
       const base = `flags.${MODULE_ID}.trigger`;

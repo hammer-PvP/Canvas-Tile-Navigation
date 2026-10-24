@@ -337,5 +337,20 @@
   "CTN.FX.ChoosePreview": "Selecione um efeito instalado para visualizar a animação.",
   "CTN.FX.LoadingPreview": "Carregando animação…",
   "CTN.FX.PreviewUnavailable": "Prévia indisponível neste item. Ainda é possível selecioná-lo e testar localmente na Scene.",
-  "CTN.FX.ConfirmEffect": "Usar efeito selecionado"
+  "CTN.FX.ConfirmEffect": "Usar efeito selecionado",
+  "CTN.FX.OnLinkedActivation": "Ao receber ativação vinculada",
+  "CTN.FX.InteractionArea": "Área de interação",
+  "CTN.FX.UseFXArea": "Usar área do Visual FX em vez da área do Tile",
+  "CTN.FX.InteractionHint": "Desmarcado: cliques e entrada usam o Tile original. Marcado: usam o retângulo do FX. As regras de dano, salvaguarda e transição continuam sendo as do Tile.",
+  "CTN.Linked.Title": "Ativação vinculada",
+  "CTN.Linked.Enable": "Ativar este Tile por outro Gatilho",
+  "CTN.Linked.Source": "Gatilho de origem",
+  "CTN.Linked.ChooseSource": "Selecionar um Gatilho nesta Scene",
+  "CTN.Linked.MissingSource": "Gatilho ausente ou inválido",
+  "CTN.Linked.Status": "Estado atual",
+  "CTN.Linked.Active": "ATIVO",
+  "CTN.Linked.Inactive": "INATIVO",
+  "CTN.Linked.Activate": "Ativar agora",
+  "CTN.Linked.Deactivate": "Desativar agora",
+  "CTN.Linked.Hint": "Salve para registrar o Gatilho de origem. Enquanto inativo, este Tile não pode ser usado. O Gatilho o habilita ao ser acionado, e o GM pode desativá-lo aqui. Selecione Ao receber ativação vinculada em Visual FX para iniciar a animação de abertura. Para um portal que permanece aberto, use Ao receber ativação vinculada e duração Persistente no Visual FX."
 }

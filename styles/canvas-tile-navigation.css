@@ -383,3 +383,12 @@
 .ctn-trigger-warning {
   color: var(--color-text-emphatic, #d6a62c);
 }
+
+/* Compact linked controls; never expose dormant Tile options when disabled. */
+.ctn-linked-config [hidden] { display: none !important; }
+.ctn-linked-toggle, .ctn-fx-interaction-choice { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; }
+.ctn-linked-toggle input[type="checkbox"], .ctn-fx-interaction-choice input[type="checkbox"] { margin: 0; flex: 0 0 auto; }
+.ctn-linked-config [data-ctn-linked-body] { margin-top: .4rem; }
+.ctn-linked-status { display: flex; gap: .5rem; align-items: center; justify-content: space-between; margin: .35rem 0; }
+.ctn-linked-status button { flex: 0 0 auto; }
+.ctn-fx-interaction-choice { font-size: .86rem; }

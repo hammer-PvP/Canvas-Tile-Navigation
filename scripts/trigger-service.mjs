@@ -13,6 +13,8 @@ import {
 } from "./constants.mjs";
 import { requestTriggeredActorTransition } from "./navigation-service.mjs";
 import { emitVisualFX } from "./seqfx.mjs";
+import { interactionContainsPoint, tokenInsideInteraction } from "./interaction-area.mjs";
+import { activateLinkedTargets, linkedIsActive } from "./linked-activation.mjs";
 import { resolveScene, resolveTile } from "./route-service.mjs";
 import { tileBounds, tokenBounds } from "./token-service.mjs";
 import {
@@ -207,16 +209,7 @@ export function getTriggerDamageComponents(tileOrData, { includeDisabled = false
 }
 
 function tileContainsPoint(tile, point) {
-  if (tile?.shape?.testPoint) {
-    try {
-      return Boolean(tile.shape.testPoint(point));
-    } catch (_error) {
-      // Fall through to rectangular bounds.
-    }
-  }
-  const bounds = tileBounds(tile);
-  return point.x >= bounds.x && point.x <= bounds.x + bounds.width
-    && point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  return interactionContainsPoint(tile, point);
 }
 
 function tokenCenterAt(token, position) {
@@ -289,7 +282,7 @@ function firstEntryOnMovement(token, trigger, movement) {
 
 function triggerCanFire(trigger) {
   const data = triggerData(trigger);
-  return Boolean(data && data.state !== TRIGGER_STATES.DISABLED);
+  return Boolean(data && data.state !== TRIGGER_STATES.DISABLED && linkedIsActive(trigger));
 }
 
 function firstCrossedTrigger(token, movement) {
@@ -854,11 +847,14 @@ async function handleTriggerEnter(message) {
   const trigger = resolveTile(message.triggerUuid);
   const token = resolveToken(message.tokenUuid);
   const data = triggerData(trigger);
-  if (!trigger || !token || !data || data.state === TRIGGER_STATES.DISABLED) return;
+  if (!trigger || !token || !data || data.state === TRIGGER_STATES.DISABLED || !linkedIsActive(trigger)) return;
 
   const lock = triggerLockData(token);
   if (lock?.active && lock.triggerUuid === trigger.uuid) return;
 
+  // Wake same-scene linked receivers before resolving this Trigger's own
+  // Saving Throw/Damage. Its consequences and their UI remain unchanged.
+  await activateLinkedTargets(trigger);
   emitVisualFX(trigger, "activation", token);
   const isDirect = data.state === TRIGGER_STATES.REVEALED
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION

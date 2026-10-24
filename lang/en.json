@@ -337,5 +337,20 @@
   "CTN.FX.ChoosePreview": "Select an installed effect to preview it.",
   "CTN.FX.LoadingPreview": "Loading animation…",
   "CTN.FX.PreviewUnavailable": "Preview unavailable for this entry. It can still be selected and tested locally on the Scene.",
-  "CTN.FX.ConfirmEffect": "Use Selected Effect"
+  "CTN.FX.ConfirmEffect": "Use Selected Effect",
+  "CTN.FX.OnLinkedActivation": "On Linked Activation",
+  "CTN.FX.InteractionArea": "Interaction Area",
+  "CTN.FX.UseFXArea": "Use Visual FX Area instead of Tile Area",
+  "CTN.FX.InteractionHint": "Unchecked: CTN uses the original Tile for clicks/entry. Checked: it uses the FX rectangle. The FX does not create extra damage or transitions; existing Tile rules still apply.",
+  "CTN.Linked.Title": "Linked Activation",
+  "CTN.Linked.Enable": "Activate this Tile from another Trigger",
+  "CTN.Linked.Source": "Source Trigger",
+  "CTN.Linked.ChooseSource": "Choose a Trigger in this Scene",
+  "CTN.Linked.MissingSource": "Missing or invalid Trigger",
+  "CTN.Linked.Status": "Current state",
+  "CTN.Linked.Active": "ACTIVE",
+  "CTN.Linked.Inactive": "INACTIVE",
+  "CTN.Linked.Activate": "Activate Now",
+  "CTN.Linked.Deactivate": "Deactivate Now",
+  "CTN.Linked.Hint": "Save to register the source Trigger. While inactive this Tile cannot be used. The source wakes it on a valid activation; the GM may deactivate it here. Choose On Linked Activation in Visual FX if the opening animation should start then. For a portal that stays open, choose On Linked Activation and Persistent lifetime for its Visual FX."
 }
