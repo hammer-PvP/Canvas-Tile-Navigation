@@ -5,6 +5,7 @@ import {
   isSequencerAvailable, jb2aPaths, playTileFX, stopTileFX
 } from "./seqfx.mjs";
 import { resolveTile } from "./route-service.mjs";
+import { JB2A_FACETS, indexJB2APaths, facetValues, filterJB2AIndex } from "./jb2a-browser-filters.mjs";
 
 const escape = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 const label = (key) => game.i18n.localize(`CTN.FX.${key}`);
@@ -124,14 +125,34 @@ async function previewMediaPath(path) {
 function openEffectBrowser(onChoose, current = "") {
   const paths = jb2aPaths();
   if (!paths.length) { ui.notifications.warn(label("NoEffects")); return; }
+  const PAGE_SIZE = 100;
+  const index = indexJB2APaths(paths);
+  const filterFields = JB2A_FACETS.map((facet) => {
+    const title = label(`Filter${facet[0].toUpperCase()}${facet.slice(1)}`);
+    const choices = facetValues(index, facet)
+      .map((value) => opt(value, value, "")).join("");
+    return `<label class="ctn-fx-browser__filter"><span>${escape(title)}</span>
+      <select data-fx-filter="${facet}" aria-label="${escape(title)}">${opt("", label("All"), "")}${choices}</select></label>`;
+  }).join("");
   const dlg = document.createElement("dialog");
   dlg.className = "ctn-fx-browser";
   dlg.innerHTML = `<section class="ctn-fx-browser__layout">
     <div class="ctn-fx-browser__list">
       <header><strong>${escape(label("Browse"))}</strong>
         <button type="button" data-fx-close aria-label="Close">×</button></header>
+      <div class="ctn-fx-browser__filters">${filterFields}</div>
       <input type="search" data-fx-query placeholder="${escape(label("Search"))}" autocomplete="off">
-      <p class="hint" data-fx-count></p><div data-fx-results class="ctn-fx-results" role="listbox"></div>
+      <p class="hint" data-fx-count></p>
+      <div data-fx-results class="ctn-fx-results" role="listbox"></div>
+      <nav class="ctn-fx-browser__pages" aria-label="${escape(label("PageNavigation"))}">
+        <button type="button" data-fx-first title="${escape(label("FirstPage"))}" aria-label="${escape(label("FirstPage"))}">«</button>
+        <button type="button" data-fx-previous title="${escape(label("PreviousPage"))}" aria-label="${escape(label("PreviousPage"))}">‹</button>
+        <input data-fx-page type="number" min="1" step="1" value="1" aria-label="${escape(label("PageNumber"))}">
+        <button type="button" data-fx-go title="${escape(label("GoPage"))}">${escape(label("GoPage"))}</button>
+        <span data-fx-pages-count></span>
+        <button type="button" data-fx-next title="${escape(label("NextPage"))}" aria-label="${escape(label("NextPage"))}">›</button>
+        <button type="button" data-fx-last title="${escape(label("LastPage"))}" aria-label="${escape(label("LastPage"))}">»</button>
+      </nav>
     </div>
     <div class="ctn-fx-browser__preview">
       <strong>${escape(label("Preview"))}</strong>
@@ -156,9 +177,14 @@ function openEffectBrowser(onChoose, current = "") {
   const status = dlg.querySelector("[data-fx-status]");
   const pathLabel = dlg.querySelector("[data-fx-path]");
   const confirm = dlg.querySelector("[data-fx-confirm]");
+  const pageInput = dlg.querySelector("[data-fx-page]");
+  const pageCount = dlg.querySelector("[data-fx-pages-count]");
+  const filters = Object.fromEntries(JB2A_FACETS.map((facet) => [facet, dlg.querySelector(`[data-fx-filter="${facet}"]`)]));
   let selected = paths.includes(current) ? current : "";
+  let previewedPath = "";
   let previewRequest = 0;
-  let filtered = paths;
+  let filtered = index;
+  let page = selected ? Math.floor(paths.indexOf(selected) / PAGE_SIZE) + 1 : 1;
   const stopMedia = () => {
     video.pause(); video.removeAttribute("src"); video.load();
     video.hidden = true; image.removeAttribute("src"); image.hidden = true;
@@ -177,7 +203,6 @@ function openEffectBrowser(onChoose, current = "") {
         image.src = file; image.hidden = false;
       } else {
         video.src = file; video.hidden = false;
-        // HTML media autoplay can be blocked; controls remain usable.
         void video.play().catch(() => {});
       }
       status.hidden = true;
@@ -189,53 +214,88 @@ function openEffectBrowser(onChoose, current = "") {
   };
   const choose = (path) => {
     selected = path;
-    confirm.disabled = false;
-    results.querySelectorAll("button").forEach((btn) => {
+    if (previewedPath !== path) {
+      previewedPath = path;
+      void preview(path);
+    }
+    confirm.disabled = !selected;
+    results.querySelectorAll("button[data-fx-path]").forEach((btn) => {
       const chosen = btn.dataset.fxPath === path;
       btn.classList.toggle("selected", chosen);
       btn.setAttribute("aria-selected", String(chosen));
     });
-    void preview(path);
   };
   const render = () => {
-    const needle = search.value.trim().toLocaleLowerCase();
-    filtered = paths.filter((p) => p.toLowerCase().includes(needle));
-    const visible = filtered.slice(0, 180);
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    page = Math.min(Math.max(page, 1), totalPages);
+    const visible = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     const frag = document.createDocumentFragment();
-    for (const path of visible) {
+    for (const item of visible) {
       const button = document.createElement("button");
       button.type = "button";
       button.setAttribute("role", "option");
-      button.dataset.fxPath = path;
-      button.textContent = path;
-      button.title = path;
-      const chosen = selected === path;
-      button.classList.toggle("selected", chosen);
-      button.setAttribute("aria-selected", String(chosen));
-      button.addEventListener("click", () => choose(path));
+      button.dataset.fxPath = item.path;
+      button.textContent = item.path;
+      button.title = item.path;
+      button.addEventListener("click", () => choose(item.path));
       frag.append(button);
     }
     results.replaceChildren(frag);
-    count.textContent = `${filtered.length} ${label("Results")}${filtered.length > 180 ? " (first 180)" : ""}`;
-    if (!selected || !filtered.includes(selected)) {
-      if (filtered.length) choose(filtered[0]);
-      else { selected = ""; confirm.disabled = true; stopMedia(); status.hidden = false; status.textContent = label("NoEffects"); pathLabel.textContent = ""; }
+    results.scrollTop = 0;
+    count.textContent = `${filtered.length} ${label("Results")}`;
+    pageInput.value = String(page);
+    pageInput.max = String(totalPages);
+    pageCount.textContent = `/ ${totalPages}`;
+    dlg.querySelector("[data-fx-first]").disabled = page <= 1;
+    dlg.querySelector("[data-fx-previous]").disabled = page <= 1;
+    dlg.querySelector("[data-fx-next]").disabled = page >= totalPages;
+    dlg.querySelector("[data-fx-last]").disabled = page >= totalPages;
+    if (visible.length) choose(visible.some((item) => item.path === selected) ? selected : visible[0].path);
+    else {
+      selected = "";
+      previewedPath = "";
+      confirm.disabled = true;
+      ++previewRequest;
+      stopMedia(); status.hidden = false; status.textContent = label("NoMatches"); pathLabel.textContent = "";
     }
   };
+  const applyFilters = () => {
+    page = 1;
+    const facets = Object.fromEntries(JB2A_FACETS.map((facet) => [facet, filters[facet].value]));
+    filtered = filterJB2AIndex(index, search.value, facets);
+    render();
+  };
+  const goPage = (target) => {
+    const candidate = Number(target);
+    if (!Number.isInteger(candidate)) { pageInput.value = String(page); return; }
+    page = Math.max(1, Math.min(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)), candidate));
+    render();
+  };
+  dlg.querySelector("[data-fx-first]").addEventListener("click", () => goPage(1));
+  dlg.querySelector("[data-fx-previous]").addEventListener("click", () => goPage(page - 1));
+  dlg.querySelector("[data-fx-next]").addEventListener("click", () => goPage(page + 1));
+  dlg.querySelector("[data-fx-last]").addEventListener("click", () => goPage(Math.ceil(filtered.length / PAGE_SIZE)));
+  dlg.querySelector("[data-fx-go]").addEventListener("click", () => goPage(pageInput.value));
+  pageInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); goPage(pageInput.value); }
+  });
   dlg.querySelector("[data-fx-close]").addEventListener("click", () => dlg.close());
   dlg.querySelector("[data-fx-cancel]").addEventListener("click", () => dlg.close());
   confirm.addEventListener("click", () => { if (selected) { onChoose(selected); dlg.close(); } });
   dlg.addEventListener("close", () => { ++previewRequest; stopMedia(); dlg.remove(); }, { once: true });
-  search.addEventListener("input", render);
+  search.addEventListener("input", applyFilters);
+  JB2A_FACETS.forEach((facet) => filters[facet].addEventListener("change", applyFilters));
   search.addEventListener("keydown", (event) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     if (!filtered.length) return;
     event.preventDefault();
-    const index = Math.max(0, filtered.indexOf(selected));
-    const next = filtered[Math.max(0, Math.min(filtered.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))];
-    choose(next);
-    results.querySelectorAll("button").forEach((btn) => {
-      if (btn.dataset.fxPath === next) btn.scrollIntoView({ block: "nearest" });
+    const position = Math.max(0, filtered.findIndex((item) => item.path === selected));
+    const next = Math.max(0, Math.min(filtered.length - 1, position + (event.key === "ArrowDown" ? 1 : -1)));
+    const nextPage = Math.floor(next / PAGE_SIZE) + 1;
+    if (page !== nextPage) { page = nextPage; render(); }
+    choose(filtered[next].path);
+    results.querySelectorAll("button[data-fx-path]").forEach((btn) => {
+      if (btn.dataset.fxPath === selected) btn.scrollIntoView({ block: "nearest" });
     });
   });
   video.addEventListener("error", () => { video.hidden = true; status.hidden = false; status.textContent = label("PreviewUnavailable"); });

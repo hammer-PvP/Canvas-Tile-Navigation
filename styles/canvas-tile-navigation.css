@@ -309,6 +309,18 @@
 .ctn-fx-browser header button { width: 2rem; min-width: 2rem; }
 .ctn-fx-browser input { display: block; width: 100%; margin: .35rem 0; }
 .ctn-fx-browser__list, .ctn-fx-browser__preview { min-width: 0; }
+
+.ctn-fx-browser__filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem .5rem; }
+.ctn-fx-browser__filter { display: flex; flex-direction: column; min-width: 0; gap: .12rem;
+  font-size: .72rem; color: var(--color-text-light-secondary, #c8c8c8); }
+.ctn-fx-browser__filter select { width: 100%; min-width: 0; height: 2rem; font-size: .76rem; }
+.ctn-fx-browser__pages { display: flex; justify-content: center; align-items: center; gap: .23rem;
+  margin-top: .45rem; white-space: nowrap; }
+.ctn-fx-browser__pages button { flex: 0 0 auto; min-width: 1.8rem; width: auto; padding: .16rem .38rem; }
+.ctn-fx-browser__pages input[data-fx-page] { flex: 0 0 48px; width: 48px; min-width: 48px; max-width: 48px;
+  text-align: center; height: 1.85rem; margin: 0; padding: .1rem .15rem; }
+.ctn-fx-browser__pages [data-fx-pages-count] { font-size: .76rem; font-variant-numeric: tabular-nums; }
+
 .ctn-fx-results { display: flex; flex-direction: column; gap: .2rem; overflow-y: auto; max-height: min(53vh, 550px); }
 .ctn-fx-results button { text-align: left; font-family: monospace; font-size: .78rem; flex: none;
   overflow-wrap: anywhere; height: auto; min-height: 2rem; padding: .35rem; }

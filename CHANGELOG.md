@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.13b — JB2A browser filters and paging (QA, 2026-10-24)
+
+- Search is performed over the entire installed JB2A Sequencer Database, with 100 results rendered per page rather than a hard 180-item cap.
+- Compact First, Previous, direct page number/Go, Next and Last navigation.
+- Optional Category, Color, Shape, Variation and Distance filters, each with an All setting. Filter options are inferred from installed database paths; unclassified effects remain accessible with All.
+- Local animated preview and explicit effect confirmation are preserved. No change to the FX runner, Tile mechanics, Scene transitions or canvas editor.
+- QA build: requires real Foundry V14 + Sequencer/JB2A testing before approval.
+
+
 All notable changes to Canvas Tile Navigation are documented here, with the newest version first.
 
 ## 1.1.13a — PixiJS 7 canvas editor fix (2026-10-24)
