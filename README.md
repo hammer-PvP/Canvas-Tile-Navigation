@@ -1,5 +1,21 @@
 # Canvas Tile Navigation
 
+### Toggle Activation (v1.1.15)
+
+Trigger Tiles optionally support **Toggle Activation On / Off** beneath Trigger Activation.
+Each successful activation of the original Tile alternates its activation state.
+The switch can open/close the source Tile's configured remote Effect Area and
+enable/disable its directly linked receivers. It does **not** reverse damage,
+saving throws, transfers or one-shot FX already processed, nor does it
+override a Visual FX duration. A remote Effect Area still obeys the lifetime
+configured for that area.
+
+If a Toggle is enabled, the previously configured **After Trigger** setting
+is preserved but not executed; disabling Toggle restores the ordinary Trigger
+behavior. Newly created and legacy Trigger Tiles default to Toggle disabled.
+Reset closes dependent areas and relinks as OFF before rearming.
+
+
 **Canvas Tile Navigation (CTN)** is a Foundry VTT V14 module for building visual Scene-to-Scene navigation directly on the Canvas.
 
 Its core idea is simple:

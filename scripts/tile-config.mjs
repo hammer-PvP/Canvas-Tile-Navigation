@@ -39,7 +39,8 @@ import {
 import {
   getTriggerDamageComponents,
   isTriggerTile,
-  triggerData
+  triggerData,
+  resetToggleActivation
 } from "./trigger-service.mjs";
 import { abilityChoices, damageTypeChoices, supportsTriggerRules } from "./trigger-adapter.mjs";
 import {
@@ -53,7 +54,7 @@ import {
 import { openDefaultAssetImagePicker } from "./asset-folder.mjs";
 import { fxConfigHTML, wireFXConfig } from "./fx-config.mjs";
 import { emitVisualFX, stopTileFX } from "./seqfx.mjs";
-import { linkedData, linkedIsActive, linkedSourceCandidates, setLinkedActive } from "./linked-activation.mjs";
+import { linkedData, linkedIsActive, linkedSourceCandidates, setLinkedActive, deactivateLinkedTargets } from "./linked-activation.mjs";
 import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
@@ -209,6 +210,15 @@ function triggerConfigHTML(tile, data) {
           ${option('double', localized('CTN.Trigger.DoubleClick'), data.activationMode ?? 'enter')}
         </select></div>
       </div>
+      <div class="ctn-trigger-toggle-row" data-ctn-activation-toggle>
+        <label class="ctn-trigger-toggle">
+          <input type="hidden" data-ctn-activation-toggle-value name="${base}.toggleEnabled" value="${data.toggleEnabled ? 'true' : 'false'}">
+          <input type="checkbox" data-ctn-activation-toggle-input ${data.toggleEnabled ? 'checked' : ''}>
+          <strong>${escapeHTML(localized('CTN.Trigger.ToggleActivation'))}</strong>
+        </label>
+        <span class="ctn-toggle-state">${escapeHTML(localized(data.toggleActive ? 'CTN.Trigger.ToggleOn' : 'CTN.Trigger.ToggleOff'))}</span>
+      </div>
+      <p class="hint" data-ctn-activation-toggle-hint hidden>${escapeHTML(localized('CTN.Trigger.ToggleHint'))}</p>
       <p class="hint" data-ctn-trigger-click-hidden hidden>${escapeHTML(localized('CTN.Trigger.HiddenClickHint'))}</p>
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.TileConfig.Label"))}</label>
@@ -284,6 +294,7 @@ function triggerConfigHTML(tile, data) {
       </div>
 
       <hr>
+      <div data-ctn-trigger-after-body>
       <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.AfterTrigger"))}</label>
         <div class="form-fields"><select data-ctn-trigger-after name="${base}.afterTrigger">${afterOptions}</select></div></div>
       <p class="hint" data-ctn-trigger-after-hint>${escapeHTML(localized("CTN.Trigger.AfterHint"))}</p>
@@ -291,6 +302,7 @@ function triggerConfigHTML(tile, data) {
         <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.PersistentHazardSave"))}</label>
           <div class="form-fields"><select name="${base}.disableSaveOnPersistentHazard">${hazardSaveOptions}</select></div></div>
         <p class="hint">${escapeHTML(localized("CTN.Trigger.PersistentHazardSaveHint"))}</p>
+      </div>
       </div>
       <p class="hint">${escapeHTML(localized("CTN.Trigger.ImageHint"))}</p>
     </fieldset>
@@ -864,10 +876,12 @@ function wireTriggerConfig(container, tile) {
   root.querySelector("[data-ctn-trigger-reset]")?.addEventListener("click", async () => {
     const data = triggerData(tile);
     if (!data) return;
+    if (data.toggleEnabled) await resetToggleActivation(tile);
+    else await setEffectAreaActive(tile, false);
     await tile.update({
       hidden: data.initialVisibility === TRIGGER_INITIAL_VISIBILITY.HIDDEN,
       [`flags.${MODULE_ID}.trigger.state`]: "armed",
-      [`flags.${MODULE_ID}.trigger.effectActive`]: false,
+      [`flags.${MODULE_ID}.trigger.toggleActive`]: false,
       [`flags.${MODULE_ID}.trigger.saveState`]: data.saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF
     }, { ctnTriggerState: true });
     await stopTileFX(tile);
@@ -938,10 +952,23 @@ function wireTriggerConfig(container, tile) {
   const after = root.querySelector("[data-ctn-trigger-after]");
   const pause = root.querySelector("[data-ctn-trigger-pause]");
   const pauseValue = root.querySelector("[data-ctn-trigger-pause-value]");
+  const toggleActivation = root.querySelector('[data-ctn-activation-toggle-input]');
+  const toggleActivationValue = root.querySelector('[data-ctn-activation-toggle-value]');
   const switches = Object.fromEntries([...root.querySelectorAll("[data-ctn-trigger-toggle]")]
     .map((input) => [input.dataset.ctnTriggerToggle, input]));
   let suspendedAfter = null;
   const refresh = () => {
+    if (toggleActivationValue && toggleActivation) {
+      const selected = toggleActivation.checked ? 'true' : 'false';
+      if (toggleActivationValue.value !== selected) {
+        toggleActivationValue.value = selected;
+        toggleActivationValue.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    const toggleHint = root.querySelector('[data-ctn-activation-toggle-hint]');
+    if (toggleHint) toggleHint.hidden = !toggleActivation?.checked;
+    const afterBody = root.querySelector('[data-ctn-trigger-after-body]');
+    if (afterBody) afterBody.hidden = !!toggleActivation?.checked;
     const clicked = root.querySelector(`[name="flags.${MODULE_ID}.trigger.activationMode"]`)?.value === 'double';
     const hiddenSource = root.querySelector(`[name="flags.${MODULE_ID}.trigger.initialVisibility"]`)?.value === TRIGGER_INITIAL_VISIBILITY.HIDDEN;
     const clickHint = root.querySelector('[data-ctn-trigger-click-hidden]');
@@ -1003,13 +1030,15 @@ function wireTriggerConfig(container, tile) {
       const option = [...after.options].find((entry) => entry.value === kind);
       if (option) option.disabled = !valid(kind);
     }
-    if (!valid(after.value)) {
-      suspendedAfter = after.value;
-      after.value = TRIGGER_AFTER.REMAIN_ACTIVE_TRAP;
-    } else if (suspendedAfter && valid(suspendedAfter)
-        && after.value === TRIGGER_AFTER.REMAIN_ACTIVE_TRAP) {
-      after.value = suspendedAfter;
-      suspendedAfter = null;
+    if (!toggleActivation?.checked) {
+      if (!valid(after.value)) {
+        suspendedAfter = after.value;
+        after.value = TRIGGER_AFTER.REMAIN_ACTIVE_TRAP;
+      } else if (suspendedAfter && valid(suspendedAfter)
+          && after.value === TRIGGER_AFTER.REMAIN_ACTIVE_TRAP) {
+        after.value = suspendedAfter;
+        suspendedAfter = null;
+      }
     }
     const hazardSave = root.querySelector("[data-ctn-trigger-hazard-save]");
     if (hazardSave) hazardSave.hidden = after.value !== TRIGGER_AFTER.PERSISTENT_DAMAGE || !enabled("saveEnabled");
@@ -1040,6 +1069,7 @@ function wireTriggerConfig(container, tile) {
   });
   arrivalSelect?.addEventListener("change", refresh);
   pause?.addEventListener("change", refresh);
+  toggleActivation?.addEventListener('change', refresh);
   root.querySelector(`[name="flags.${MODULE_ID}.trigger.activationMode"]`)?.addEventListener('change', refresh);
   root.querySelector(`[name="flags.${MODULE_ID}.trigger.initialVisibility"]`)?.addEventListener('change', refresh);
   for (const input of Object.values(switches)) input.addEventListener("change", refresh);
@@ -1050,6 +1080,8 @@ function wireTriggerConfig(container, tile) {
   // Avoid accidentally saving a visually selected unsupported combination.
   refresh();
 }
+
+const toggleDisabledDuringUpdate = new Set();
 
 export function registerTileConfigHooks() {
   Hooks.on("renderApplicationV2", (application, element) => {
@@ -1101,6 +1133,16 @@ export function registerTileConfigHooks() {
     }
   });
 
+  Hooks.on('updateTile', (tile) => {
+    if (!toggleDisabledDuringUpdate.delete(tile.uuid) || !game.user?.isGM) return;
+    // A disabled checkbox must not leave a previously latched portal/linked
+    // receiver active. Fire-and-forget is limited to the primary GM via reset.
+    void (async () => {
+      await setEffectAreaActive(tile, false);
+      await deactivateLinkedTargets(tile);
+    })().catch(error => console.warn(`${MODULE_ID} | Toggle cleanup failed`, error));
+  });
+
   Hooks.on("preUpdateTile", (tile, changes) => {
     const linkBase = `flags.${MODULE_ID}.linkedActivation`;
     const oldLink = linkedData(tile);
@@ -1121,6 +1163,16 @@ export function registerTileConfigHooks() {
       const sceneUuid = getSubmittedValue(changes, `${base}.transitionSceneUuid`, trigger.transitionSceneUuid);
       const arrivalUuid = getSubmittedValue(changes, `${base}.transitionArrivalUuid`, trigger.transitionArrivalUuid);
       const arrival = resolveTile(arrivalUuid);
+      if (hasSubmittedValue(changes, `${base}.toggleEnabled`)) {
+        const selected = [true, 'true'].includes(getSubmittedValue(changes, `${base}.toggleEnabled`, trigger.toggleEnabled));
+        if (selected !== trigger.toggleEnabled) {
+          if (!selected && trigger.toggleActive) toggleDisabledDuringUpdate.add(tile.uuid);
+          foundry.utils.setProperty(changes, `${base}.toggleActive`, false);
+          if (selected && trigger.state === 'disabled') {
+            foundry.utils.setProperty(changes, `${base}.state`, 'armed');
+          }
+        }
+      }
 
       if (hasSubmittedValue(changes, `${base}.initialVisibility`) && state === "armed") {
         changes.hidden = initialVisibility === TRIGGER_INITIAL_VISIBILITY.HIDDEN;
@@ -1152,7 +1204,8 @@ export function registerTileConfigHooks() {
           targetScene && arrival && arrival.parent?.id === targetScene.id);
         const invalidAfter = proposedAfter === TRIGGER_AFTER.DIRECT_TRANSITION && !hasValidDestination
           || proposedAfter === TRIGGER_AFTER.PERSISTENT_DAMAGE && (!damageEnabled || !components.length);
-        if (invalidAfter) {
+        const toggleSelected = bool(getSubmittedValue(changes, `${base}.toggleEnabled`, trigger.toggleEnabled));
+        if (invalidAfter && !toggleSelected) {
           foundry.utils.setProperty(changes, `${base}.afterTrigger`, TRIGGER_AFTER.REMAIN_ACTIVE_TRAP);
         }
       }

@@ -53,6 +53,17 @@ export async function setLinkedActive(tile, active) {
   return true;
 }
 
+/** OFF only affects direct receivers of this source, not unrelated Tiles. */
+export async function deactivateLinkedTargets(sourceTile) {
+  if (!game.user?.isGM || !sourceTile || !isTriggerTile(sourceTile)) return;
+  for (const target of sourceTile.parent?.tiles ?? []) {
+    if (target.id === sourceTile.id || !(isTransitionTile(target) || isTriggerTile(target))) continue;
+    const data = linkedData(target);
+    if (!data.enabled || !data.active || data.sourceTileUuid !== sourceTile.uuid) continue;
+    await setLinkedActive(target, false);
+  }
+}
+
 export async function activateLinkedTargets(sourceTile) {
   if (!game.user?.isGM || !sourceTile || !isTriggerTile(sourceTile)) return;
   // Called only from the primary GM's already-authorized Trigger activation.

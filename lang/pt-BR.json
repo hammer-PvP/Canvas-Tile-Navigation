@@ -367,5 +367,9 @@
   "CTN.Trigger.SearchArrival": "Filtrar Chegadas...",
   "CTN.Trigger.ClickNeedsToken": "Selecione um Token a até uma célula deste gatilho para interagir.",
   "CTN.Trigger.HiddenClickHint": "Jogadores não conseguem dar duplo clique em um gatilho oculto. Deixe a alavanca visível ou use entrada do Token.",
-  "CTN.Trigger.AreaNoLongerActive": "O portal não está mais ativo. Reabra-o antes de transferir este Token."
+  "CTN.Trigger.AreaNoLongerActive": "O portal não está mais ativo. Reabra-o antes de transferir este Token.",
+  "CTN.Trigger.ToggleActivation": "Alternar Ativação Liga / Desliga",
+  "CTN.Trigger.ToggleOn": "LIGADO",
+  "CTN.Trigger.ToggleOff": "DESLIGADO",
+  "CTN.Trigger.ToggleHint": "Alterna apenas a ativação. Áreas dependentes e Tiles vinculados podem desligar; salvaguardas, dano, transferências e FX pontuais não são revertidos. Após Gatilho é preservado, mas não atua no modo Alternar."
 }

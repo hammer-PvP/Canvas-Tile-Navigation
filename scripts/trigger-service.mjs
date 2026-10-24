@@ -15,7 +15,7 @@ import { requestTriggeredActorTransition } from "./navigation-service.mjs";
 import { emitVisualFX } from "./seqfx.mjs";
 import { TRIGGER_AREA, containsTriggerArea, tokenInsideTriggerArea, scopedTriggerData, hasEffectConsequences } from "./trigger-areas.mjs";
 import { effectAreaIsActive, effectAreaSessionId, recordEffectAreaEntry, setEffectAreaActive } from "./effect-area-state.mjs";
-import { activateLinkedTargets, linkedIsActive } from "./linked-activation.mjs";
+import { activateLinkedTargets, deactivateLinkedTargets, linkedIsActive } from "./linked-activation.mjs";
 import { resolveScene, resolveTile } from "./route-service.mjs";
 import { tileBounds, tokenBounds } from "./token-service.mjs";
 import {
@@ -31,6 +31,8 @@ const SAMPLE_DIVISOR = 4;
 const localMovementLocks = new Set();
 const recentMovementTriggers = new Set();
 const warnedLockedTokens = new Map();
+// Serialize Toggle interactions on each source Tile; two clients must not both read OFF.
+const toggleQueues = new Map();
 
 let armedPlacement = false;
 let placementCanvas = null;
@@ -95,6 +97,8 @@ export function defaultTriggerData() {
     transitionOnEffectArea: false,
     transitionMode: "gm",
     activationMode: "enter",
+    toggleEnabled: false,
+    toggleActive: false,
     effectActive: false,
     effectSession: null,
     saveState: TRIGGER_SAVE_STATES.OFF,
@@ -167,6 +171,8 @@ export function triggerData(tile) {
     effectActive: enabledFlag(raw.effectActive, false),
     transitionMode: raw.transitionMode === 'automatic' ? 'automatic' : 'gm',
     activationMode: raw.activationMode === 'double' ? 'double' : 'enter',
+    toggleEnabled: enabledFlag(raw.toggleEnabled, false),
+    toggleActive: enabledFlag(raw.toggleActive, false),
     saveState: runtimeSaveState,
     disableSaveOnPersistentHazard,
     saveDC: Number(raw.saveDC) || 10,
@@ -297,6 +303,41 @@ function firstEntryOnMovement(token, trigger, movement, area = TRIGGER_AREA.SOUR
   return null;
 }
 
+function queueToggle(trigger, task) {
+  const id = trigger.uuid;
+  const previous = toggleQueues.get(id) ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(task);
+  toggleQueues.set(id, current);
+  void current.finally(() => {
+    if (toggleQueues.get(id) === current) toggleQueues.delete(id);
+  }).catch(() => {});
+  return current;
+}
+
+// A Toggle controls the ACTIVATION only. Saves, damage, transitions and
+// non-area Visual FX never get undone on OFF.
+export async function resetToggleActivation(trigger) {
+  if (!isPrimaryGM() || !triggerData(trigger)?.toggleEnabled) return false;
+  return queueToggle(trigger, () => closeToggleActivation(trigger));
+}
+
+export async function closeToggleActivation(trigger) {
+  if (!isPrimaryGM() || !triggerData(trigger)?.toggleEnabled) return false;
+  await trigger.update({
+    [`flags.${MODULE_ID}.trigger.toggleActive`]: false
+  }, { ctnTriggerState: true, ctnToggleState: true });
+  if (effectAreaIsActive(trigger) || trigger.getFlag(MODULE_ID, 'trigger')?.effectActive) {
+    await setEffectAreaActive(trigger, false);
+  }
+  await deactivateLinkedTargets(trigger);
+  return true;
+}
+
+function hasSourceConsequences(data) {
+  const source = scopedTriggerData(data, TRIGGER_AREA.SOURCE);
+  return Boolean(source?.saveEnabled || source?.damageEnabled || source?.transitionEnabled);
+}
+
 function triggerCanFire(trigger) {
   const data = triggerData(trigger);
   return Boolean(data && data.activationMode !== "double" && data.state !== TRIGGER_STATES.DISABLED && linkedIsActive(trigger));
@@ -319,7 +360,11 @@ function firstCrossedTrigger(token, movement) {
       const entry = firstEntryOnMovement(token, trigger, movement, TRIGGER_AREA.EFFECT);
       // Once opened, an overlapping portal takes precedence on subsequent
       // entries. The opening movement itself cannot enter a dormant portal.
-      if (entry && (!best || entry.progress <= best.entry.progress)) best = { trigger, entry, area: TRIGGER_AREA.EFFECT };
+      const sourceToggleWins = best?.trigger?.id === trigger.id
+        && best.area === TRIGGER_AREA.SOURCE && data?.toggleEnabled;
+      if (entry && !sourceToggleWins && (!best || entry.progress <= best.entry.progress)) {
+        best = { trigger, entry, area: TRIGGER_AREA.EFFECT };
+      }
     }
   }
   return best;
@@ -389,10 +434,12 @@ function onPreMoveToken(token, movement, operation = {}) {
   setTimeout(() => recentMovementTriggers.delete(key), 5000);
 
   const data = triggerData(crossed.trigger);
-  const revealedDirect = data.state === TRIGGER_STATES.REVEALED
+  const revealedDirect = !data.toggleEnabled && data.state === TRIGGER_STATES.REVEALED
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION
     && validTriggerDestination(data) && !data.transitionOnEffectArea;
-  const shouldPause = crossed.area === TRIGGER_AREA.SOURCE && !revealedDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
+  const switchingOff = crossed.area === TRIGGER_AREA.SOURCE && data.toggleEnabled && data.toggleActive;
+  const shouldPause = crossed.area === TRIGGER_AREA.SOURCE && !switchingOff
+    && !revealedDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
 
   if (shouldPause) {
     localMovementLocks.add(token.uuid);
@@ -687,6 +734,12 @@ async function applyRevealForPhase(trigger, resolution, phase) {
 
 async function finalizeTriggerBehavior(trigger, resolution) {
   if (resolution.behaviorFinalized) return;
+  // A latched activation never runs After Trigger. Its stored setting is
+  // preserved and resumes when Toggle is disabled in the Tile configuration.
+  if (resolution.area !== TRIGGER_AREA.EFFECT && triggerData(trigger)?.toggleEnabled) {
+    resolution.behaviorFinalized = true;
+    return;
+  }
   const data = triggerData(trigger);
   if (!data) return;
 
@@ -905,6 +958,15 @@ async function performRevealedDirectTransition(trigger, token, requesterId) {
 
 async function handleTriggerEnter(message) {
   if (!isPrimaryGM()) return;
+  const tile = resolveTile(message?.triggerUuid);
+  if (message?.area !== TRIGGER_AREA.EFFECT && triggerData(tile)?.toggleEnabled) {
+    return queueToggle(tile, () => processTriggerEnter(message));
+  }
+  return processTriggerEnter(message);
+}
+
+async function processTriggerEnter(message) {
+  if (!isPrimaryGM()) return;
   const trigger = resolveTile(message.triggerUuid);
   const token = resolveToken(message.tokenUuid);
   const data = triggerData(trigger);
@@ -916,6 +978,18 @@ async function handleTriggerEnter(message) {
 
   const lock = triggerLockData(token);
   if (lock?.active && lock.triggerUuid === trigger.uuid) return;
+
+  if (area === TRIGGER_AREA.SOURCE && data.toggleEnabled) {
+    // Re-read after entering the per-Tile queue; a prior interaction might
+    // have flipped the switch while this one was waiting.
+    if (triggerData(trigger)?.toggleActive) {
+      await closeToggleActivation(trigger);
+      return; // OFF never rolls again, posts a chat card, or moves a Token.
+    }
+    await trigger.update({
+      [`flags.${MODULE_ID}.trigger.toggleActive`]: true
+    }, { ctnTriggerState: true, ctnToggleState: true });
+  }
 
   // Wake same-scene linked receivers before resolving this Trigger's own
   // Saving Throw/Damage. Its consequences and their UI remain unchanged.
@@ -934,7 +1008,8 @@ async function handleTriggerEnter(message) {
     await recordEffectAreaEntry(trigger);
     if (!effectAreaIsActive(trigger)) return;
   }
-  const isDirect = area === TRIGGER_AREA.SOURCE && data.state === TRIGGER_STATES.REVEALED
+  const isDirect = area === TRIGGER_AREA.SOURCE && !data.toggleEnabled
+    && data.state === TRIGGER_STATES.REVEALED
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION
     && validTriggerDestination(data) && !data.transitionOnEffectArea;
   if (isDirect) {
@@ -942,8 +1017,15 @@ async function handleTriggerEnter(message) {
     return;
   }
 
-  const isPersistentHazard = area === TRIGGER_AREA.SOURCE && data.state === TRIGGER_STATES.ACTIVE_HAZARD
+  const isPersistentHazard = area === TRIGGER_AREA.SOURCE && !data.toggleEnabled
+    && data.state === TRIGGER_STATES.ACTIVE_HAZARD
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.PERSISTENT_DAMAGE;
+  // A switch without consequences on its original Tile needs no empty GM
+  // chat card. It may still reveal itself, open a remote area or wake links.
+  if (area === TRIGGER_AREA.SOURCE && data.toggleEnabled && !hasSourceConsequences(data)) {
+    if (shouldReveal(data, { saveResult: null }, 'trigger')) await revealTrigger(trigger);
+    return;
+  }
   const dataAtEntry = foundry.utils.deepClone(data);
   const { message: chatMessage, resolution } = await createResolutionMessage(
     trigger,
@@ -960,10 +1042,14 @@ async function handleTriggerEnter(message) {
   }
 
   if (area === TRIGGER_AREA.SOURCE && !isPersistentHazard) {
-    await trigger.update({
-      [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED,
-      [`flags.${MODULE_ID}.trigger.saveState`]: data.saveState
-    }, { ctnTriggerState: true });
+    if (!data.toggleEnabled) {
+      await trigger.update({
+        [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED,
+        [`flags.${MODULE_ID}.trigger.saveState`]: data.saveState
+      }, { ctnTriggerState: true });
+    }
+    // Reveal is an independent consequence and must still happen when
+    // the activation is a Toggle rather than a one-shot Trigger.
     await applyRevealForPhase(trigger, resolution, "trigger");
   }
 

@@ -1,3 +1,20 @@
+## 1.1.15 — Toggle Activation (QA)
+
+### Added
+
+- Optional **Toggle Activation On / Off** on Trigger Tiles, for Enter or Double-click activation.
+- Each consecutive valid activation alternates the source mechanism ON/OFF. State changes are serialized per Tile to prevent concurrent clients from double-opening.
+- A closing activation disables a dependent remote Effect Area and direct Linked Activation receivers without reversing any previously resolved Saving Throw, Damage, Teleport or one-shot Visual FX.
+- ON activation preserves all existing source-area consequences; pure lever/plate switches do not emit an empty GM resolution card.
+- Existing After Trigger preference is retained and temporarily not executed in Toggle mode.
+- Reset closes the dependent Effect Area and linked receivers before rearming.
+
+### Compatibility / QA
+
+- Toggle is OFF by default on all existing and newly created Trigger Tiles, preserving v1.1.14 mechanics.
+- Existing Scene navigation, One-Way Arrival, damage, saves, FX lifetimes and GM confirmation / automatic transitions remain unchanged outside the opt-in path.
+- This is a QA candidate; runtime Foundry V14 validation remains required.
+
 ## v1.1.14 — Effect Area lifetime and safe portal closure (QA, 2026-10-24)
 
 - The interactive Effect Area follows the Visual FX lifetime configured for `On Activation` rather than remaining mechanically ACTIVE after the animation has ended.
