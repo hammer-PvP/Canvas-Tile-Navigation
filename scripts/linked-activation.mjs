@@ -4,9 +4,11 @@
  */
 import { MODULE_ID } from "./constants.mjs";
 import { resolveTile } from "./route-service.mjs";
-import { isTriggerTile } from "./trigger-service.mjs";
+import { isTriggerTile, triggerData } from "./trigger-service.mjs";
 import { isTransitionTile } from "./transition-service.mjs";
 import { emitVisualFX, stopTileFX } from "./seqfx.mjs";
+import { hasEffectConsequences } from "./trigger-areas.mjs";
+import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
 
 const FLAG = "linkedActivation";
 
@@ -43,6 +45,9 @@ export async function setLinkedActive(tile, active) {
   }
   if (data.active === Boolean(active)) return true;
   await tile.update({ [`flags.${MODULE_ID}.${FLAG}.active`]: Boolean(active) }, { ctnLinkedState: true });
+  if (isTriggerTile(tile) && hasEffectConsequences(triggerData(tile))) {
+    await setEffectAreaActive(tile, Boolean(active));
+  }
   if (!active) await stopTileFX(tile);
   else emitVisualFX(tile, "linked");
   return true;

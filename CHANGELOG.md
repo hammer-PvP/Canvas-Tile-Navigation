@@ -1,3 +1,14 @@
+## v1.1.13d — Trigger and FX Area separation (QA)
+
+- Trigger activation always belongs to the original Tile, by Token entry or optional double-click; when linked to another Trigger, the existing cross-Tile activation feature remains available at the top of the Trigger configuration.
+- Saving Throw, Damage and Scene Transition now each offer an independent **On Effect Area** option. The original area opens the effect zone; it no longer gets replaced by the Visual FX rectangle.
+- Effect Area has an independent active state, which can be opened/closed by the GM; normal Trigger rearm does not close an open portal. Reset closes it.
+- Saving Throw on the Effect Area resolves for the Token entering that area, not the character who opened it.
+- Scene Transition supports GM confirmation or automatic actor transfer, using the pre-existing Destination Scene/Arrival and one-way route machinery.
+- Distinct movement detection for original and FX area, including overlap protection; preserve earlier effects and route mechanics by default.
+- Linked Activation moved to the top of Trigger Tile settings; previous options remain for independent target Tiles.
+- Compact Trigger checkboxes and filter fields for Destination Scene and Arrival selections.
+
 # Changelog
 
 ## 1.1.13c — Interactive Visual FX area and Linked Activation (QA, 2026-10-24)

@@ -392,3 +392,16 @@
 .ctn-linked-status { display: flex; gap: .5rem; align-items: center; justify-content: space-between; margin: .35rem 0; }
 .ctn-linked-status button { flex: 0 0 auto; }
 .ctn-fx-interaction-choice { font-size: .86rem; }
+
+/* 1.1.13d — compact, progressive Trigger options (no mechanic changes). */
+.ctn-trigger-config hr { margin: .28rem 0; opacity: .65; }
+.ctn-trigger-config .ctn-trigger-toggle-row { margin: .16rem 0; min-height: 1.55rem; }
+.ctn-trigger-config .ctn-trigger-option-body { margin: .16rem 0 .34rem 1rem; padding-left: .5rem; }
+.ctn-trigger-config .ctn-trigger-option-body .form-group { margin: .18rem 0; }
+.ctn-trigger-area-choice { display: inline-flex; align-items: center; gap: .35rem; margin: .12rem 0 .32rem; font-size: .84rem; cursor: pointer; }
+.ctn-trigger-area-choice input[type="checkbox"] { margin: 0; flex: 0 0 auto; }
+.ctn-linked-inline { padding: .15rem 0; }
+.ctn-linked-inline [hidden] { display: none !important; }
+.ctn-effect-area-state .form-fields button { width: auto; min-width: 6rem; }
+.ctn-scene-search-fields { display: flex; flex-direction: column; align-items: stretch; gap: .2rem; }
+.ctn-scene-search-fields input[type="search"], .ctn-scene-search-fields select { width: 100%; min-width: 0; }

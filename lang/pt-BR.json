@@ -352,5 +352,19 @@
   "CTN.Linked.Inactive": "INATIVO",
   "CTN.Linked.Activate": "Ativar agora",
   "CTN.Linked.Deactivate": "Desativar agora",
-  "CTN.Linked.Hint": "Salve para registrar o Gatilho de origem. Enquanto inativo, este Tile não pode ser usado. O Gatilho o habilita ao ser acionado, e o GM pode desativá-lo aqui. Selecione Ao receber ativação vinculada em Visual FX para iniciar a animação de abertura. Para um portal que permanece aberto, use Ao receber ativação vinculada e duração Persistente no Visual FX."
+  "CTN.Linked.Hint": "Salve para registrar o Gatilho de origem. Enquanto inativo, este Tile não pode ser usado. O Gatilho o habilita ao ser acionado, e o GM pode desativá-lo aqui. Selecione Ao receber ativação vinculada em Visual FX para iniciar a animação de abertura. Para um portal que permanece aberto, use Ao receber ativação vinculada e duração Persistente no Visual FX.",
+  "CTN.Trigger.OnEffectArea": "Na área do efeito (senão: Tile original)",
+  "CTN.Trigger.ActivationMode": "Ativação do Gatilho",
+  "CTN.Trigger.Enter": "Ao entrar com Token",
+  "CTN.Trigger.DoubleClick": "Duplo clique no Tile",
+  "CTN.Trigger.TransferMode": "Modo de Transferência",
+  "CTN.Trigger.Automatic": "Automático — mover Token",
+  "CTN.Trigger.GMConfirm": "Confirmação do GM (Mover Token)",
+  "CTN.Trigger.EffectState": "Estado da Área do Efeito",
+  "CTN.Trigger.OpenArea": "Abrir Área",
+  "CTN.Trigger.CloseArea": "Fechar Área",
+  "CTN.Trigger.SearchScene": "Filtrar Cenas...",
+  "CTN.Trigger.SearchArrival": "Filtrar Chegadas...",
+  "CTN.Trigger.ClickNeedsToken": "Selecione um Token a até uma célula deste gatilho para interagir.",
+  "CTN.Trigger.HiddenClickHint": "Jogadores não conseguem dar duplo clique em um gatilho oculto. Deixe a alavanca visível ou use entrada do Token."
 }

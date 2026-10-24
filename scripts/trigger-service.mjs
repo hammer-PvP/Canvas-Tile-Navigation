@@ -13,7 +13,8 @@ import {
 } from "./constants.mjs";
 import { requestTriggeredActorTransition } from "./navigation-service.mjs";
 import { emitVisualFX } from "./seqfx.mjs";
-import { interactionContainsPoint, tokenInsideInteraction } from "./interaction-area.mjs";
+import { TRIGGER_AREA, containsTriggerArea, tokenInsideTriggerArea, scopedTriggerData, hasEffectConsequences } from "./trigger-areas.mjs";
+import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
 import { activateLinkedTargets, linkedIsActive } from "./linked-activation.mjs";
 import { resolveScene, resolveTile } from "./route-service.mjs";
 import { tileBounds, tokenBounds } from "./token-service.mjs";
@@ -89,6 +90,12 @@ export function defaultTriggerData() {
     initialVisibility: TRIGGER_INITIAL_VISIBILITY.HIDDEN,
     pauseMode: TRIGGER_PAUSE.NEVER,
     saveEnabled: false,
+    saveOnEffectArea: false,
+    damageOnEffectArea: false,
+    transitionOnEffectArea: false,
+    transitionMode: "gm",
+    activationMode: "enter",
+    effectActive: false,
     saveState: TRIGGER_SAVE_STATES.OFF,
     disableSaveOnPersistentHazard: true,
     saveAbility: "dex",
@@ -121,6 +128,9 @@ export function triggerData(tile) {
   ));
   const transitionEnabled = enabledFlag(raw.transitionEnabled, Boolean(raw.transitionSceneUuid));
   const revealEnabled = enabledFlag(raw.revealEnabled, raw.revealCondition !== TRIGGER_REVEAL.NEVER);
+  // v1.1.13c used one global FX hitbox. Preserve its CONSEQUENCE placement
+  // while restoring the original Tile as the activation area in 1.1.13d.
+  const legacyFXArea = enabledFlag(tile?.getFlag?.(MODULE_ID, 'visualFX')?.interactionAtFX, false);
   const configuredSaveState = saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF;
   const disableSaveOnPersistentHazard = raw.disableSaveOnPersistentHazard !== false
     && raw.disableSaveOnPersistentHazard !== "false";
@@ -150,6 +160,12 @@ export function triggerData(tile) {
     damageEnabled,
     transitionEnabled,
     revealEnabled,
+    saveOnEffectArea: enabledFlag(raw.saveOnEffectArea, legacyFXArea),
+    damageOnEffectArea: enabledFlag(raw.damageOnEffectArea, legacyFXArea),
+    transitionOnEffectArea: enabledFlag(raw.transitionOnEffectArea, legacyFXArea),
+    effectActive: enabledFlag(raw.effectActive, false),
+    transitionMode: raw.transitionMode === 'automatic' ? 'automatic' : 'gm',
+    activationMode: raw.activationMode === 'double' ? 'double' : 'enter',
     saveState: runtimeSaveState,
     disableSaveOnPersistentHazard,
     saveDC: Number(raw.saveDC) || 10,
@@ -208,8 +224,8 @@ export function getTriggerDamageComponents(tileOrData, { includeDisabled = false
     .filter((entry) => entry.formula);
 }
 
-function tileContainsPoint(tile, point) {
-  return interactionContainsPoint(tile, point);
+function tileContainsPoint(tile, point, area = TRIGGER_AREA.SOURCE) {
+  return containsTriggerArea(tile, point, area);
 }
 
 function tokenCenterAt(token, position) {
@@ -220,8 +236,8 @@ function tokenCenterAt(token, position) {
   };
 }
 
-function tokenInsideTrigger(token, trigger, position = null) {
-  return tileContainsPoint(trigger, tokenCenterAt(token, position));
+function tokenInsideTrigger(token, trigger, position = null, area = TRIGGER_AREA.SOURCE) {
+  return tileContainsPoint(trigger, tokenCenterAt(token, position), area);
 }
 
 function triggerOccupants(trigger) {
@@ -255,10 +271,10 @@ function movementWaypoints(movement) {
   return points;
 }
 
-function firstEntryOnMovement(token, trigger, movement) {
+function firstEntryOnMovement(token, trigger, movement, area = TRIGGER_AREA.SOURCE) {
   const points = movementWaypoints(movement);
   if (points.length < 2) return null;
-  if (tokenInsideTrigger(token, trigger, points[0])) return null;
+  if (tokenInsideTrigger(token, trigger, points[0], area)) return null;
 
   const gridSize = Math.max(20, Number(token.parent?.grid?.size) || 100);
   const sampleStep = Math.max(5, gridSize / SAMPLE_DIVISOR);
@@ -274,7 +290,7 @@ function firstEntryOnMovement(token, trigger, movement) {
       const t = index / steps;
       const pos = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
       progress += 1;
-      if (tokenInsideTrigger(token, trigger, pos)) return { position: pos, progress };
+      if (tokenInsideTrigger(token, trigger, pos, area)) return { position: pos, progress };
     }
   }
   return null;
@@ -282,7 +298,7 @@ function firstEntryOnMovement(token, trigger, movement) {
 
 function triggerCanFire(trigger) {
   const data = triggerData(trigger);
-  return Boolean(data && data.state !== TRIGGER_STATES.DISABLED && linkedIsActive(trigger));
+  return Boolean(data && data.activationMode !== "double" && data.state !== TRIGGER_STATES.DISABLED && linkedIsActive(trigger));
 }
 
 function firstCrossedTrigger(token, movement) {
@@ -291,10 +307,19 @@ function firstCrossedTrigger(token, movement) {
 
   let best = null;
   for (const trigger of triggerTiles(scene)) {
-    if (!triggerCanFire(trigger)) continue;
-    const entry = firstEntryOnMovement(token, trigger, movement);
-    if (!entry) continue;
-    if (!best || entry.progress < best.entry.progress) best = { trigger, entry };
+    const data = triggerData(trigger);
+    if (triggerCanFire(trigger)) {
+      const entry = firstEntryOnMovement(token, trigger, movement, TRIGGER_AREA.SOURCE);
+      if (entry && (!best || entry.progress < best.entry.progress)) best = { trigger, entry, area: TRIGGER_AREA.SOURCE };
+    }
+    // An already-open area can receive its own per-token Save/Damage/Transition.
+    // The original plate never changes hitbox, even if the rectangles overlap.
+    if (effectAreaIsActive(trigger) && linkedIsActive(trigger) && hasEffectConsequences(data)) {
+      const entry = firstEntryOnMovement(token, trigger, movement, TRIGGER_AREA.EFFECT);
+      // Once opened, an overlapping portal takes precedence on subsequent
+      // entries. The opening movement itself cannot enter a dormant portal.
+      if (entry && (!best || entry.progress <= best.entry.progress)) best = { trigger, entry, area: TRIGGER_AREA.EFFECT };
+    }
   }
   return best;
 }
@@ -334,6 +359,7 @@ function sendTriggerEnter(token, trigger, movement, entryPosition, paused) {
     triggerUuid: trigger.uuid,
     movementId: movement?.id ?? "",
     entryPosition,
+    area: movement?.ctnTriggerArea ?? TRIGGER_AREA.SOURCE,
     paused
   };
 
@@ -364,15 +390,15 @@ function onPreMoveToken(token, movement, operation = {}) {
   const data = triggerData(crossed.trigger);
   const revealedDirect = data.state === TRIGGER_STATES.REVEALED
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION
-    && validTriggerDestination(data);
-  const shouldPause = !revealedDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
+    && validTriggerDestination(data) && !data.transitionOnEffectArea;
+  const shouldPause = crossed.area === TRIGGER_AREA.SOURCE && !revealedDirect && data.pauseMode === TRIGGER_PAUSE.ON_TRIGGER;
 
   if (shouldPause) {
     localMovementLocks.add(token.uuid);
     setTimeout(() => void stopAtTriggerEntry(token, crossed.entry.position), 0);
   }
 
-  sendTriggerEnter(token, crossed.trigger, movement, crossed.entry.position, shouldPause);
+  sendTriggerEnter(token, crossed.trigger, { ...movement, ctnTriggerArea: crossed.area }, crossed.entry.position, shouldPause);
   if (shouldPause) return false;
 }
 
@@ -451,8 +477,8 @@ function damageMultiplier(trigger, resolution) {
 
 function shouldReveal(data, resolution, phase) {
   if (!data.revealEnabled || data.revealCondition === TRIGGER_REVEAL.NEVER) return false;
-  // A Save-dependent reveal cannot wait for a Save that is disabled.
-  if (!saveIsActive(data)) return phase === "trigger";
+  // Reveal is a property of the original plate. Remote Saves cannot reveal it.
+  if (!saveIsActive(scopedTriggerData(data, TRIGGER_AREA.SOURCE))) return phase === "trigger";
   if (phase === "trigger") return data.revealCondition === TRIGGER_REVEAL.ON_TRIGGER;
   if (phase === "save") {
     return (data.revealCondition === TRIGGER_REVEAL.FAILED_SAVE && resolution.saveResult === false)
@@ -483,17 +509,19 @@ function resolutionSaveRequired(data, resolution) {
 }
 
 function resolutionEligibility(trigger, token, resolution) {
-  const data = triggerData(trigger);
+  const area = resolution.area ?? TRIGGER_AREA.SOURCE;
+  const data = scopedTriggerData(triggerData(trigger), area);
+  const areaAvailable = area !== TRIGGER_AREA.EFFECT || effectAreaIsActive(trigger);
   const actor = actorOfToken(token);
   const components = getTriggerDamageComponents(data);
   const saveRequired = resolutionSaveRequired(data, resolution);
   const saveResolved = resolution.saveResult !== null;
   const saveGateOpen = !saveRequired || saveResolved;
   const nativeDamage = supportsNativeTriggerDamage(actor);
-  const damageEligible = Boolean(components.length)
+  const damageEligible = areaAvailable && Boolean(components.length)
     && saveGateOpen
     && conditionMatches(data.damageCondition, resolution, { saveActive: saveRequired, kind: "damage" });
-  const transitionEligible = resolution.mode !== "persistent-damage"
+  const transitionEligible = areaAvailable && resolution.mode !== "persistent-damage"
     && validTriggerDestination(data)
     && saveGateOpen
     && conditionMatches(data.transitionCondition, resolution, { saveActive: saveRequired, kind: "transition" });
@@ -571,7 +599,7 @@ function renderResolutionCard(trigger, token, resolution) {
   if (!nativeDamage && damageEligible && resolution.damageRolls?.length && !resolution.damageApplied) {
     buttons.push(resolutionButton("apply-damage", game.i18n.localize("CTN.Trigger.ApplyDamage"), "fa-solid fa-heart-crack"));
   }
-  if (transitionEligible && !resolution.transitionDone) {
+  if (transitionEligible && !resolution.transitionDone && data.transitionMode !== "automatic") {
     buttons.push(resolutionButton("move-token", game.i18n.localize("CTN.Trigger.MoveToken"), "fa-solid fa-person-falling"));
   }
   if (!nativeDamage && damageEligible && !resolution.damageApplied && !locked) {
@@ -614,8 +642,10 @@ async function updateResolutionMessage(message, resolution) {
 }
 
 async function createResolutionMessage(trigger, token, requesterId, { mode = "initial" } = {}) {
-  const data = triggerData(trigger);
+  const area = mode === "effect" ? TRIGGER_AREA.EFFECT : TRIGGER_AREA.SOURCE;
+  const data = scopedTriggerData(triggerData(trigger), area);
   const resolution = {
+    area,
     id: foundry.utils.randomID(),
     mode,
     triggerUuid: trigger.uuid,
@@ -630,7 +660,7 @@ async function createResolutionMessage(trigger, token, requesterId, { mode = "in
     damageMultiplier: null,
     damageApplied: false,
     transitionDone: false,
-    behaviorFinalized: false,
+    behaviorFinalized: area === TRIGGER_AREA.EFFECT,
     manualResolved: false,
     resolved: false
   };
@@ -697,7 +727,7 @@ async function finalizeTriggerBehavior(trigger, resolution) {
 
 async function resolveNativeDamage(trigger, actor, resolution, dataSnapshot = null) {
   if (!supportsNativeTriggerDamage(actor) || resolution.damageApplied) return false;
-  const data = dataSnapshot ?? triggerData(trigger);
+  const data = dataSnapshot ?? scopedTriggerData(triggerData(trigger), resolution.area);
   const components = getTriggerDamageComponents(data);
   const saveRequired = resolutionSaveRequired(data, resolution);
   if (!components.length || (saveRequired && resolution.saveResult === null)) return false;
@@ -730,6 +760,24 @@ async function releaseResolutionToken(_trigger, token, resolution) {
   emitReleaseToUser(resolution.requesterId, token.uuid);
 }
 
+/** Same trusted GM transition path for automatic and manually approved moves. */
+async function maybeAutomaticTransition(trigger, token, resolution) {
+  if (resolution.transitionDone) return false;
+  const context = resolutionEligibility(trigger, token, resolution);
+  if (context.data.transitionMode !== "automatic" || !context.transitionEligible) return false;
+  const scene = resolveScene(context.data.transitionSceneUuid);
+  const arrival = resolveTile(context.data.transitionArrivalUuid);
+  if (!scene || !arrival || arrival.parent?.id !== scene.id) return false;
+  const succeeded = await requestTriggeredActorTransition({ sourceToken: token, targetScene: scene, arrivalTile: arrival });
+  if (!succeeded) return false;
+  resolution.transitionDone = true;
+  if (context.locked) {
+    await clearTokenLock(token);
+    emitReleaseToUser(resolution.requesterId, token.uuid);
+  }
+  return true;
+}
+
 async function handleResolutionAction(message, action, button = null) {
   if (!game.user?.isGM) return;
   const resolution = resolutionFromMessage(message);
@@ -738,15 +786,18 @@ async function handleResolutionAction(message, action, button = null) {
   const trigger = resolveTile(resolution.triggerUuid);
   const token = resolveToken(resolution.tokenUuid);
   const actor = actorOfToken(token);
-  const data = triggerData(trigger);
+  const data = scopedTriggerData(triggerData(trigger), resolution.area ?? TRIGGER_AREA.SOURCE);
   if (!trigger || !token || !actor || !data) return;
 
   if (action === "save-pass" || action === "save-fail") {
     resolution.saveResult = action === "save-pass";
     resolution.saveTotal = null;
     emitVisualFX(trigger, resolution.saveResult ? "pass" : "fail", token);
-    await applyRevealForPhase(trigger, resolution, "save");
-    await finalizeTriggerBehavior(trigger, resolution);
+    if (resolution.area !== TRIGGER_AREA.EFFECT) {
+      await applyRevealForPhase(trigger, resolution, "save");
+      await finalizeTriggerBehavior(trigger, resolution);
+    }
+    await maybeAutomaticTransition(trigger, token, resolution);
     await updateResolutionMessage(message, resolution);
     return;
   }
@@ -796,7 +847,7 @@ async function handleResolutionAction(message, action, button = null) {
       return;
     }
     resolution.transitionDone = true;
-    await finalizeTriggerBehavior(trigger, resolution);
+    if (resolution.area !== TRIGGER_AREA.EFFECT) await finalizeTriggerBehavior(trigger, resolution);
     await updateResolutionMessage(message, resolution);
     return;
   }
@@ -847,31 +898,38 @@ async function handleTriggerEnter(message) {
   const trigger = resolveTile(message.triggerUuid);
   const token = resolveToken(message.tokenUuid);
   const data = triggerData(trigger);
-  if (!trigger || !token || !data || data.state === TRIGGER_STATES.DISABLED || !linkedIsActive(trigger)) return;
+  if (!trigger || !token || !data || !linkedIsActive(trigger)) return;
+  const area = message.area === TRIGGER_AREA.EFFECT ? TRIGGER_AREA.EFFECT : TRIGGER_AREA.SOURCE;
+  if (area === TRIGGER_AREA.EFFECT) {
+    if (!effectAreaIsActive(trigger) || !hasEffectConsequences(data)) return;
+  } else if (data.state === TRIGGER_STATES.DISABLED) return;
 
   const lock = triggerLockData(token);
   if (lock?.active && lock.triggerUuid === trigger.uuid) return;
 
   // Wake same-scene linked receivers before resolving this Trigger's own
   // Saving Throw/Damage. Its consequences and their UI remain unchanged.
-  await activateLinkedTargets(trigger);
-  emitVisualFX(trigger, "activation", token);
-  const isDirect = data.state === TRIGGER_STATES.REVEALED
+  if (area === TRIGGER_AREA.SOURCE) {
+    await activateLinkedTargets(trigger);
+    if (hasEffectConsequences(data)) await setEffectAreaActive(trigger, true);
+    emitVisualFX(trigger, "activation", token);
+  }
+  const isDirect = area === TRIGGER_AREA.SOURCE && data.state === TRIGGER_STATES.REVEALED
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION
-    && validTriggerDestination(data);
+    && validTriggerDestination(data) && !data.transitionOnEffectArea;
   if (isDirect) {
     await performRevealedDirectTransition(trigger, token, message.requesterId);
     return;
   }
 
-  const isPersistentHazard = data.state === TRIGGER_STATES.ACTIVE_HAZARD
+  const isPersistentHazard = area === TRIGGER_AREA.SOURCE && data.state === TRIGGER_STATES.ACTIVE_HAZARD
     && effectiveAfterTrigger(data) === TRIGGER_AFTER.PERSISTENT_DAMAGE;
   const dataAtEntry = foundry.utils.deepClone(data);
   const { message: chatMessage, resolution } = await createResolutionMessage(
     trigger,
     token,
     message.requesterId,
-    { mode: isPersistentHazard ? "persistent-damage" : "initial" }
+    { mode: area === TRIGGER_AREA.EFFECT ? "effect" : isPersistentHazard ? "persistent-damage" : "initial" }
   );
   if (message.paused) {
     await setTokenLock(token, {
@@ -881,7 +939,7 @@ async function handleTriggerEnter(message) {
     });
   }
 
-  if (!isPersistentHazard) {
+  if (area === TRIGGER_AREA.SOURCE && !isPersistentHazard) {
     await trigger.update({
       [`flags.${MODULE_ID}.trigger.state`]: TRIGGER_STATES.TRIGGERED,
       [`flags.${MODULE_ID}.trigger.saveState`]: data.saveState
@@ -894,7 +952,8 @@ async function handleTriggerEnter(message) {
   // activation can mutate Save State to OFF. Damage still waits for the GM to
   // explicitly press Roll Damage on the Trigger card.
   if (!resolution.saveRequired) {
-    if (!isPersistentHazard) await finalizeTriggerBehavior(trigger, resolution);
+    if (area === TRIGGER_AREA.SOURCE && !isPersistentHazard) await finalizeTriggerBehavior(trigger, resolution);
+    await maybeAutomaticTransition(trigger, token, resolution);
   }
 
   await updateResolutionMessage(chatMessage, resolution);
@@ -1042,7 +1101,7 @@ async function handleArrivalMaterialized({ tokenUuids = [] } = {}) {
       .filter((candidate) => {
         const data = triggerData(candidate);
         return !(data?.state === TRIGGER_STATES.REVEALED
-          && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION);
+          && effectiveAfterTrigger(data) === TRIGGER_AFTER.DIRECT_TRANSITION && !data.transitionOnEffectArea);
       })
       .filter((candidate) => tokenInsideTrigger(token, candidate))
       .sort((a, b) => (Number(b.sort) || 0) - (Number(a.sort) || 0))[0];
@@ -1064,7 +1123,60 @@ async function handleArrivalMaterialized({ tokenUuids = [] } = {}) {
   }
 }
 
+let boundTriggerClickCanvas = null;
+
+function onTriggerDoubleClick(event) {
+  if (event.button !== 0 || !canvas?.ready || !canvas.scene || !game.user) return;
+  if (game.user.isGM && canvas.activeLayer === canvas.tiles) return; // Never hijack Tile editing.
+  const point = canvas.canvasCoordinatesFromClient({ x: event.clientX, y: event.clientY });
+  if (!point) return;
+  const targets = triggerTiles(canvas.scene)
+    .filter(tile => triggerData(tile)?.activationMode === 'double')
+    .filter(tile => tile.getFlag(MODULE_ID, 'trigger')?.state !== TRIGGER_STATES.DISABLED)
+    .filter(linkedIsActive)
+    .filter(tile => game.user.isGM || !tile.hidden)
+    .filter(tile => containsTriggerArea(tile, point, TRIGGER_AREA.SOURCE))
+    .sort((a, b) => (Number(b.sort) || 0) - (Number(a.sort) || 0));
+  const tile = targets[0];
+  if (!tile) return;
+
+  const candidates = game.user.isGM
+    ? (canvas.tokens?.controlled ?? []).map(t => t.document)
+    : [...canvas.scene.tokens].filter(t => t.actorId === game.user.character?.id);
+  const bounds = tileBounds(tile);
+  const grid = Number(canvas.scene.grid?.size) || 100;
+  const inRange = candidates.filter(token => {
+    const t = tokenBounds(token);
+    const gapX = Math.max(bounds.x - (t.x+t.width), t.x - (bounds.x+bounds.width), 0);
+    const gapY = Math.max(bounds.y - (t.y+t.height), t.y - (bounds.y+bounds.height), 0);
+    return Math.hypot(gapX, gapY) <= grid;
+  });
+  const token = inRange[0];
+  if (!token) {
+    ui.notifications.warn(game.i18n.localize('CTN.Trigger.ClickNeedsToken'));
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  sendTriggerEnter(token, tile, { id: `click-${Date.now()}`, ctnTriggerArea: TRIGGER_AREA.SOURCE }, point, false);
+}
+
+function bindTriggerClicks() {
+  const element = getCanvasElement();
+  if (!(element instanceof HTMLCanvasElement) || boundTriggerClickCanvas === element) return;
+  unbindTriggerClicks();
+  boundTriggerClickCanvas = element;
+  element.addEventListener('dblclick', onTriggerDoubleClick, { capture: true });
+}
+
+function unbindTriggerClicks() {
+  boundTriggerClickCanvas?.removeEventListener('dblclick', onTriggerDoubleClick, { capture: true });
+  boundTriggerClickCanvas = null;
+}
+
 export function registerTriggerHooks() {
+  Hooks.on('canvasReady', bindTriggerClicks);
+  Hooks.on('canvasTearDown', unbindTriggerClicks);
   Hooks.on("preMoveToken", onPreMoveToken);
   Hooks.on("moveToken", onMoveToken);
   Hooks.on("updateToken", onUpdateToken);

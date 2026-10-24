@@ -52,7 +52,9 @@ import {
 } from "./transition-service.mjs";
 import { openDefaultAssetImagePicker } from "./asset-folder.mjs";
 import { fxConfigHTML, wireFXConfig } from "./fx-config.mjs";
+import { stopTileFX } from "./seqfx.mjs";
 import { linkedData, linkedIsActive, linkedSourceCandidates, setLinkedActive } from "./linked-activation.mjs";
+import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
 
 const escapeHTML = (value) => foundry.utils.escapeHTML(String(value ?? ""));
 
@@ -139,6 +141,10 @@ function triggerConfigHTML(tile, data) {
   const components = getTriggerDamageComponents(data, { includeDisabled: true });
   const damageJSON = JSON.stringify(components);
   const base = `flags.${MODULE_ID}.trigger`;
+  const onEffect = (name, checked) => `<label class="ctn-trigger-area-choice">
+    <input type="hidden" data-ctn-area-value="${name}" name="${base}.${name}" value="${checked ? 'true' : 'false'}">
+    <input type="checkbox" data-ctn-area-toggle="${name}" ${checked ? 'checked' : ''}>
+    ${escapeHTML(localized('CTN.Trigger.OnEffectArea'))}</label>`;
   const toggle = (name, enabled, caption) => `
     <div class="ctn-trigger-toggle-row">
       <label class="ctn-trigger-toggle"><input type="hidden" data-ctn-trigger-toggle-value="${name}" name="${base}.${name}" value="${enabled ? "true" : "false"}">
@@ -189,6 +195,21 @@ function triggerConfigHTML(tile, data) {
           <button type="button" data-ctn-trigger-reset><i class="fa-solid fa-rotate-left"></i> ${escapeHTML(localized("CTN.Trigger.Reset"))}</button>
         </div>
       </div>
+      <div class="form-group ctn-effect-area-state">
+        <label>${escapeHTML(localized("CTN.Trigger.EffectState"))}</label>
+        <div class="form-fields"><span class="ctn-route-status ${effectAreaIsActive(tile) ? 'ok' : 'warning'}">${escapeHTML(localized(effectAreaIsActive(tile) ? 'CTN.Linked.Active' : 'CTN.Linked.Inactive'))}</span>
+          <button type="button" data-ctn-effect-toggle-state>${escapeHTML(localized(effectAreaIsActive(tile) ? 'CTN.Trigger.CloseArea' : 'CTN.Trigger.OpenArea'))}</button>
+        </div>
+      </div>
+      ${linkedConfigHTML(tile, { inline: true })}
+      <div class="form-group">
+        <label>${escapeHTML(localized('CTN.Trigger.ActivationMode'))}</label>
+        <div class="form-fields"><select name="${base}.activationMode">
+          ${option('enter', localized('CTN.Trigger.Enter'), data.activationMode ?? 'enter')}
+          ${option('double', localized('CTN.Trigger.DoubleClick'), data.activationMode ?? 'enter')}
+        </select></div>
+      </div>
+      <p class="hint" data-ctn-trigger-click-hidden hidden>${escapeHTML(localized('CTN.Trigger.HiddenClickHint'))}</p>
       <div class="form-group">
         <label>${escapeHTML(localized("CTN.TileConfig.Label"))}</label>
         <div class="form-fields"><input type="text" name="${base}.label" value="${escapeHTML(data.label)}"></div>
@@ -206,6 +227,7 @@ function triggerConfigHTML(tile, data) {
       <hr>
       ${toggle("saveEnabled", data.saveEnabled, localized("CTN.Trigger.EnableSave"))}
       <div class="ctn-trigger-option-body" data-ctn-trigger-section="saveEnabled" ${data.saveEnabled ? "" : "hidden"}>
+        ${onEffect('saveOnEffectArea', data.saveOnEffectArea)}
         ${supported ? "" : `<p class="hint warning">${escapeHTML(localized("CTN.Trigger.SystemRuleUnsupportedHint"))}</p>`}
         <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.SaveCurrentState"))}</label>
           <div class="form-fields"><span class="ctn-route-status ${data.saveState === TRIGGER_SAVE_STATES.ON ? "ok" : "warning"}">${escapeHTML(data.saveState === TRIGGER_SAVE_STATES.ON ? localized("CTN.Trigger.StateOn") : localized("CTN.Trigger.StateOff"))}</span></div>
@@ -220,6 +242,7 @@ function triggerConfigHTML(tile, data) {
       ${toggle("damageEnabled", data.damageEnabled, localized("CTN.Trigger.EnableDamage"))}
       <input type="hidden" data-ctn-damage-json name="${base}.damageComponents" value="${escapeHTML(damageJSON)}">
       <div class="ctn-trigger-option-body" data-ctn-trigger-section="damageEnabled" ${data.damageEnabled ? "" : "hidden"}>
+        ${onEffect('damageOnEffectArea', data.damageOnEffectArea)}
         <div data-ctn-damage-list>${damageRowsHTML(components)}</div>
         <button type="button" data-ctn-damage-add><i class="fa-solid fa-plus"></i> ${escapeHTML(localized("CTN.Trigger.AddDamage"))}</button>
         <p class="hint ctn-trigger-warning" data-ctn-trigger-damage-hint hidden>${escapeHTML(localized("CTN.Trigger.NeedDamage"))}</p>
@@ -233,11 +256,19 @@ function triggerConfigHTML(tile, data) {
       <hr>
       ${toggle("transitionEnabled", data.transitionEnabled, localized("CTN.Trigger.EnableTransition"))}
       <div class="ctn-trigger-option-body" data-ctn-trigger-section="transitionEnabled" ${data.transitionEnabled ? "" : "hidden"}>
+        ${onEffect('transitionOnEffectArea', data.transitionOnEffectArea)}
+        <div class="form-group"><label>${escapeHTML(localized('CTN.Trigger.TransferMode'))}</label>
+          <div class="form-fields"><select name="${base}.transitionMode">
+            ${option('gm', localized('CTN.Trigger.GMConfirm'), data.transitionMode ?? 'gm')}
+            ${option('automatic', localized('CTN.Trigger.Automatic'), data.transitionMode ?? 'gm')}
+          </select></div></div>
         <div class="form-group"><label>${escapeHTML(localized("CTN.TileConfig.TargetScene"))}</label>
-          <div class="form-fields"><select data-ctn-trigger-scene name="${base}.transitionSceneUuid">
+          <div class="form-fields ctn-scene-search-fields"><input type="search" data-ctn-trigger-scene-search placeholder="${escapeHTML(localized('CTN.Trigger.SearchScene'))}" autocomplete="off">
+          <select data-ctn-trigger-scene name="${base}.transitionSceneUuid">
             <option value="">${escapeHTML(localized("CTN.Trigger.NoTransition"))}</option>${sceneOptions(data.transitionSceneUuid)}</select></div></div>
         <div class="form-group"><label>${escapeHTML(localized("CTN.Trigger.Arrival"))}</label>
-          <div class="form-fields"><select data-ctn-trigger-arrival name="${base}.transitionArrivalUuid">${triggerArrivalOptions(data.transitionSceneUuid, data.transitionArrivalUuid)}</select></div></div>
+          <div class="form-fields ctn-scene-search-fields"><input type="search" data-ctn-trigger-arrival-search placeholder="${escapeHTML(localized('CTN.Trigger.SearchArrival'))}" autocomplete="off">
+          <select data-ctn-trigger-arrival name="${base}.transitionArrivalUuid">${triggerArrivalOptions(data.transitionSceneUuid, data.transitionArrivalUuid)}</select></div></div>
         <p class="hint ctn-trigger-warning" data-ctn-trigger-transition-hint hidden>${escapeHTML(localized("CTN.Trigger.NeedDestination"))}</p>
         <div class="form-group" data-ctn-trigger-save-only><label>${escapeHTML(localized("CTN.Trigger.TransitionCondition"))}</label>
           <div class="form-fields"><select name="${base}.transitionCondition">${transitionConditions}</select></div></div>
@@ -604,7 +635,7 @@ function wireTransitionConfig(container, tile) {
 }
 
 /** Linked activation augments existing Trigger/Transition Tiles; mechanics stay in their native forms. */
-function linkedConfigHTML(tile) {
+function linkedConfigHTML(tile, { inline = false } = {}) {
   const data = linkedData(tile);
   const actuallyActive = linkedIsActive(tile);
   const base = `flags.${MODULE_ID}.linkedActivation`;
@@ -613,8 +644,8 @@ function linkedConfigHTML(tile) {
     `${other.parent?.name ?? ""} — ${other.name ?? other.id}`, data.sourceTileUuid)).join("");
   const validSource = sources.some((other) => other.uuid === data.sourceTileUuid);
   const missing = data.sourceTileUuid && !validSource;
-  return `<fieldset class="ctn-config ctn-linked-config" data-ctn-linked-config>
-    <legend><i class="fa-solid fa-link"></i> ${escapeHTML(localized("CTN.Linked.Title"))}</legend>
+  return `<${inline ? 'div' : 'fieldset'} class="${inline ? 'ctn-linked-config ctn-linked-inline' : 'ctn-config ctn-linked-config'}" data-ctn-linked-config>
+    ${inline ? '' : `<legend><i class="fa-solid fa-link"></i> ${escapeHTML(localized('CTN.Linked.Title'))}</legend>`}
     <label class="ctn-linked-toggle"><input type="hidden" data-ctn-linked-enabled-value name="${base}.enabled" value="${data.enabled ? "true" : "false"}">
       <input type="checkbox" data-ctn-linked-enabled ${data.enabled ? "checked" : ""}>
       ${escapeHTML(localized("CTN.Linked.Enable"))}</label>
@@ -630,7 +661,7 @@ function linkedConfigHTML(tile) {
           ${escapeHTML(localized(data.active ? "CTN.Linked.Deactivate" : "CTN.Linked.Activate"))}</button></div>
       <p class="hint">${escapeHTML(localized("CTN.Linked.Hint"))}</p>
     </div>
-  </fieldset>`;
+  </${inline ? 'div' : 'fieldset'}>`;
 }
 
 function wireLinkedConfig(container, tile) {
@@ -836,9 +867,28 @@ function wireTriggerConfig(container, tile) {
     await tile.update({
       hidden: data.initialVisibility === TRIGGER_INITIAL_VISIBILITY.HIDDEN,
       [`flags.${MODULE_ID}.trigger.state`]: "armed",
+      [`flags.${MODULE_ID}.trigger.effectActive`]: false,
       [`flags.${MODULE_ID}.trigger.saveState`]: data.saveEnabled ? TRIGGER_SAVE_STATES.ON : TRIGGER_SAVE_STATES.OFF
     }, { ctnTriggerState: true });
+    await stopTileFX(tile);
+    tile.sheet?.render?.(true);
   });
+
+  root.querySelector('[data-ctn-effect-toggle-state]')?.addEventListener('click', async () => {
+    const open = !effectAreaIsActive(tile);
+    await setEffectAreaActive(tile, open);
+    if (!open) await stopTileFX(tile);
+    tile.sheet?.render?.(true);
+  });
+  for (const input of root.querySelectorAll('[data-ctn-area-toggle]')) {
+    input.addEventListener('change', () => {
+      const target = root.querySelector(`[data-ctn-area-value="${input.dataset.ctnAreaToggle}"]`);
+      if (!target) return;
+      target.value = input.checked ? 'true' : 'false';
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+      root.dispatchEvent(new Event('ctn-trigger-refresh'));
+    });
+  }
 
   const list = root.querySelector("[data-ctn-damage-list]");
   const hidden = root.querySelector("[data-ctn-damage-json]");
@@ -892,6 +942,12 @@ function wireTriggerConfig(container, tile) {
     .map((input) => [input.dataset.ctnTriggerToggle, input]));
   let suspendedAfter = null;
   const refresh = () => {
+    const clicked = root.querySelector(`[name="flags.${MODULE_ID}.trigger.activationMode"]`)?.value === 'double';
+    const hiddenSource = root.querySelector(`[name="flags.${MODULE_ID}.trigger.initialVisibility"]`)?.value === TRIGGER_INITIAL_VISIBILITY.HIDDEN;
+    const clickHint = root.querySelector('[data-ctn-trigger-click-hidden]');
+    if (clickHint) clickHint.hidden = !(clicked && hiddenSource);
+    const pauseRow = pause?.closest('.ctn-trigger-toggle-row');
+    if (pauseRow) pauseRow.hidden = clicked; // Pause affects movement only.
     const enabled = (name) => Boolean(switches[name]?.checked);
     for (const [name, input] of Object.entries(switches)) {
       const value = root.querySelector(`[data-ctn-trigger-toggle-value="${name}"]`);
@@ -912,8 +968,23 @@ function wireTriggerConfig(container, tile) {
         pauseValue.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }
-    root.querySelectorAll("[data-ctn-trigger-save-only]").forEach((el) => el.hidden = !enabled("saveEnabled"));
-    root.querySelectorAll("[data-ctn-trigger-no-save]").forEach((el) => el.hidden = enabled("saveEnabled"));
+    root.querySelectorAll('[data-ctn-trigger-save-only]').forEach((el) => {
+      const section = el.closest('[data-ctn-trigger-section]')?.dataset.ctnTriggerSection;
+      const consequenceAtFX = section === 'damageEnabled'
+        ? root.querySelector('[data-ctn-area-toggle="damageOnEffectArea"]')?.checked
+        : section === 'transitionEnabled' ? root.querySelector('[data-ctn-area-toggle="transitionOnEffectArea"]')?.checked : false;
+      const saveAtFX = !!root.querySelector('[data-ctn-area-toggle="saveOnEffectArea"]')?.checked;
+      el.hidden = !enabled('saveEnabled') || (section === 'revealEnabled' && saveAtFX)
+        || (['damageEnabled', 'transitionEnabled'].includes(section) && !!consequenceAtFX !== saveAtFX);
+    });
+    root.querySelectorAll('[data-ctn-trigger-no-save]').forEach((el) => {
+      const section = el.closest('[data-ctn-trigger-section]')?.dataset.ctnTriggerSection;
+      const targetAtFX = section === 'damageEnabled'
+        ? root.querySelector('[data-ctn-area-toggle="damageOnEffectArea"]')?.checked
+        : section === 'transitionEnabled' ? root.querySelector('[data-ctn-area-toggle="transitionOnEffectArea"]')?.checked : false;
+      const saveAtFX = !!root.querySelector('[data-ctn-area-toggle="saveOnEffectArea"]')?.checked;
+      el.hidden = enabled('saveEnabled') && (section === 'revealEnabled' ? !saveAtFX : targetAtFX === saveAtFX);
+    });
     const damageReady = enabled("damageEnabled")
       && [...(list?.querySelectorAll("[data-ctn-damage-formula]") ?? [])]
         .some((input) => input.value.trim());
@@ -951,6 +1022,17 @@ function wireTriggerConfig(container, tile) {
     damageInputs.forEach((input, index) => { input.required = enabled("damageEnabled") && !damageReady && index === 0; });
   };
 
+  const bindSearch = (input, select) => {
+    if (!input || !select) return;
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLocaleLowerCase();
+      for (const opt of select.options) {
+        opt.hidden = !!q && opt.value !== select.value && !opt.textContent.toLocaleLowerCase().includes(q);
+      }
+    });
+  };
+  bindSearch(root.querySelector('[data-ctn-trigger-scene-search]'), sceneSelect);
+  bindSearch(root.querySelector('[data-ctn-trigger-arrival-search]'), arrivalSelect);
   sceneSelect?.addEventListener("change", () => {
     if (!arrivalSelect) return;
     arrivalSelect.innerHTML = triggerArrivalOptions(sceneSelect.value, "");
@@ -958,6 +1040,8 @@ function wireTriggerConfig(container, tile) {
   });
   arrivalSelect?.addEventListener("change", refresh);
   pause?.addEventListener("change", refresh);
+  root.querySelector(`[name="flags.${MODULE_ID}.trigger.activationMode"]`)?.addEventListener('change', refresh);
+  root.querySelector(`[name="flags.${MODULE_ID}.trigger.initialVisibility"]`)?.addEventListener('change', refresh);
   for (const input of Object.values(switches)) input.addEventListener("change", refresh);
   after?.addEventListener("change", () => { suspendedAfter = null; refresh(); });
   list?.addEventListener("input", refresh);
@@ -990,7 +1074,7 @@ export function registerTileConfigHooks() {
         : linkConfigHTML(tile, nav);
 
     const html = `${(transition || trigger) ? tileImageConfigHTML(tile) : ""}${configHTML}`
-      + `${(transition || trigger) ? linkedConfigHTML(tile) : ""}${fxConfigHTML(tile)}`;
+      + `${transition ? linkedConfigHTML(tile) : ""}${fxConfigHTML(tile)}`;
     let host = injectCtnTab(application, form, html);
 
     // Safety fallback: if a future Foundry TileConfig changes its tab markup,

@@ -352,5 +352,19 @@
   "CTN.Linked.Inactive": "INACTIVE",
   "CTN.Linked.Activate": "Activate Now",
   "CTN.Linked.Deactivate": "Deactivate Now",
-  "CTN.Linked.Hint": "Save to register the source Trigger. While inactive this Tile cannot be used. The source wakes it on a valid activation; the GM may deactivate it here. Choose On Linked Activation in Visual FX if the opening animation should start then. For a portal that stays open, choose On Linked Activation and Persistent lifetime for its Visual FX."
+  "CTN.Linked.Hint": "Save to register the source Trigger. While inactive this Tile cannot be used. The source wakes it on a valid activation; the GM may deactivate it here. Choose On Linked Activation in Visual FX if the opening animation should start then. For a portal that stays open, choose On Linked Activation and Persistent lifetime for its Visual FX.",
+  "CTN.Trigger.OnEffectArea": "On Effect Area (otherwise: original Tile)",
+  "CTN.Trigger.ActivationMode": "Trigger Activation",
+  "CTN.Trigger.Enter": "On Token Enter",
+  "CTN.Trigger.DoubleClick": "Double-click Tile",
+  "CTN.Trigger.TransferMode": "Transfer Mode",
+  "CTN.Trigger.Automatic": "Automatic — Move Token",
+  "CTN.Trigger.GMConfirm": "GM Confirmation (Move Token)",
+  "CTN.Trigger.EffectState": "Effect Area State",
+  "CTN.Trigger.OpenArea": "Open Area",
+  "CTN.Trigger.CloseArea": "Close Area",
+  "CTN.Trigger.SearchScene": "Filter Scenes...",
+  "CTN.Trigger.SearchArrival": "Filter Arrivals...",
+  "CTN.Trigger.ClickNeedsToken": "Select a Token within one grid cell of this Trigger to use it.",
+  "CTN.Trigger.HiddenClickHint": "A hidden Trigger cannot be double-clicked by players. Make the lever visible or use token entry."
 }

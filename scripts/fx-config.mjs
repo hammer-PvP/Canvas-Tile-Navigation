@@ -62,7 +62,7 @@ export function fxConfigHTML(tile) {
       <div class="form-group"><label>${escape(label("CanvasEditor"))}</label><div class="form-fields">
         <button type="button" data-ctn-fx-canvas><i class="fa-solid fa-up-down-left-right"></i> ${escape(label("EditCanvas"))}</button></div></div>
       <p class="hint">${escape(label("CanvasHint"))}</p>
-      ${["trigger", "transition"].includes(cfg.kind) ? `<div class="form-group ctn-fx-interaction"><label>${escape(label("InteractionArea"))}</label>
+      ${cfg.kind === "transition" ? `<div class="form-group ctn-fx-interaction"><label>${escape(label("InteractionArea"))}</label>
         <div class="form-fields"><input type="hidden" data-ctn-fx-interaction-value name="${field("interactionAtFX")}" value="${cfg.interactionAtFX ? "true" : "false"}">
           <label class="ctn-fx-interaction-choice"><input type="checkbox" data-ctn-fx-interaction ${cfg.interactionAtFX ? "checked" : ""}>
           ${escape(label("UseFXArea"))}</label></div></div>
