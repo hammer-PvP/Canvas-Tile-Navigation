@@ -80,6 +80,7 @@ export function fxConfig(tile) {
     point: { x: n(raw.point?.x, 0, -1000000, 1000000), y: n(raw.point?.y, 0, -1000000, 1000000) },
     otherTileUuid: String(raw.otherTileUuid ?? ""),
     width: n(raw.width, 3, 0.1, 100), height: n(raw.height, 3, 0.1, 100),
+    rotation: n(raw.rotation, 0, -360, 360),
     lifetime: valid(raw.lifetime, Object.values(FX_LIFETIMES), "natural"),
     seconds: n(raw.seconds, 5, 0.1, MAX_DURATION_S),
     fadeIn: n(raw.fadeIn, 0.3, 0, 60), fadeOut: n(raw.fadeOut, 0.5, 0, 60),
@@ -198,6 +199,7 @@ async function executeSequence(tile, cfg, name, { preview = false } = {}) {
     .file(cfg.effect)
     .atLocation(center)
     .size({ width: cfg.width, height: cfg.height }, { gridUnits: true })
+    .rotate(cfg.rotation ?? 0)
     .name(name)
     .origin(tile.uuid);
   if (preview) {
@@ -483,6 +485,10 @@ function destroyPicker() {
   window.removeEventListener("pointerup", p.up, true);
   window.removeEventListener("keydown", p.keydown, true);
   p.toolbar?.remove();
+  p.video?.pause?.();
+  if (p.video) { p.video.removeAttribute('src'); p.video.load(); }
+  p.sprite?.parent?.removeChild?.(p.sprite);
+  p.sprite?.destroy?.();
   // Detach explicitly so the overlay is removed even with external PIXI wrappers.
   p.graphics?.parent?.removeChild?.(p.graphics);
   p.graphics?.destroy?.();
@@ -503,15 +509,31 @@ function pickerBounds(state) {
   return { left: state.x - width / 2, top: state.y - height / 2,
     right: state.x + width / 2, bottom: state.y + height / 2 };
 }
-function pickerCorners(b) {
-  return { nw: { x: b.left, y: b.top }, ne: { x: b.right, y: b.top },
-    sw: { x: b.left, y: b.bottom }, se: { x: b.right, y: b.bottom } };
+function rotatePoint(point, center, degrees) {
+  const a = degrees * Math.PI / 180;
+  const dx = point.x - center.x, dy = point.y - center.y;
+  return { x: center.x + dx * Math.cos(a) - dy * Math.sin(a),
+    y: center.y + dx * Math.sin(a) + dy * Math.cos(a) };
+}
+function pickerCorners(b, state) {
+  const center = {x: state.x, y: state.y};
+  return Object.fromEntries(Object.entries({
+    nw: { x: b.left, y: b.top }, ne: { x: b.right, y: b.top },
+    sw: { x: b.left, y: b.bottom }, se: { x: b.right, y: b.bottom }
+  }).map(([key, point]) => [key, rotatePoint(point, center, state.rotation)]));
+}
+function pickerRotationHandle(state, zoom) {
+  const b = pickerBounds(state);
+  return rotatePoint({ x: state.x, y: b.top - 34 / zoom }, state, state.rotation);
+}
+function normalizeAngle(angle) {
+  return ((angle + 180) % 360 + 360) % 360 - 180;
 }
 const OPPOSITE_CORNER = { nw: "se", ne: "sw", sw: "ne", se: "nw" };
 function pickerRender(session) {
   const { graphics: g, state } = session;
   const b = pickerBounds(state);
-  const corners = pickerCorners(b);
+  const corners = pickerCorners(b, state);
   const zoom = Math.max(0.05, Math.abs(canvas.stage?.scale?.x ?? 1));
   const radius = 7 / zoom;
   // Foundry V14 uses PixiJS 7, NOT the PixiJS 8 rect/fill/stroke API.
@@ -519,7 +541,10 @@ function pickerRender(session) {
   g.clear();
   g.lineStyle(2 / zoom, 0x64B5F6, 1);
   g.beginFill(0x64B5F6, 0.13);
-  g.drawRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+  const ordered = [corners.nw, corners.ne, corners.se, corners.sw];
+  g.moveTo(ordered[0].x, ordered[0].y);
+  for (const point of ordered.slice(1)) g.lineTo(point.x, point.y);
+  g.closePath();
   g.endFill();
   for (const c of Object.values(corners)) {
     g.lineStyle(1.5 / zoom, 0x15283A, 1);
@@ -527,11 +552,26 @@ function pickerRender(session) {
     g.drawRect(c.x - radius, c.y - radius, radius * 2, radius * 2);
     g.endFill();
   }
+  const topCenter = rotatePoint({x: state.x, y: b.top}, state, state.rotation);
+  const handle = pickerRotationHandle(state, zoom);
+  g.lineStyle(2 / zoom, 0x64B5F6, 1);
+  g.moveTo(topCenter.x, topCenter.y); g.lineTo(handle.x, handle.y);
+  g.lineStyle(2 / zoom, 0x263443, 1);
+  g.beginFill(0x8DE2D0, 1);
+  g.drawCircle(handle.x, handle.y, 9 / zoom);
+  g.endFill();
   g.lineStyle(0);
   g.beginFill(0x64B5F6, 1);
   g.drawCircle(state.x, state.y, Math.max(2, 3 / zoom));
   g.endFill();
-  session.dimensions.textContent = `${state.width.toFixed(2)} × ${state.height.toFixed(2)} ${session.unitLabel}`;
+  if (session.sprite) {
+    const grid = Number(canvas.scene?.grid?.size) || 100;
+    session.sprite.position.set(state.x, state.y);
+    session.sprite.width = state.width * grid;
+    session.sprite.height = state.height * grid;
+    session.sprite.rotation = state.rotation * Math.PI / 180;
+  }
+  session.dimensions.textContent = `${state.width.toFixed(2)} × ${state.height.toFixed(2)} ${session.unitLabel} · ${Math.round(state.rotation)}°`;
 }
 /**
  * Resize corners are screen-constant-size, and drag is independent of the
@@ -550,7 +590,7 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
   graphics.zIndex = 100000;
   canvas.interface.addChild(graphics);
   const center = fxCenter(tile, cfg);
-  const state = { x: center.x, y: center.y, width: cfg.width, height: cfg.height };
+  const state = { x: center.x, y: center.y, width: cfg.width, height: cfg.height, rotation: cfg.rotation ?? 0 };
   const unitLabel = game.i18n.localize("CTN.FX.GridUnits");
   const toolbar = document.createElement("aside");
   toolbar.className = "ctn-fx-canvas-toolbar";
@@ -567,6 +607,45 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
     dimensions: toolbar.querySelector("[data-ctn-fx-dimensions]"), drag: null
   };
   pickerSession = session;
+  // Preview is a GM-local Pixi video/image sprite. It never calls Sequence,
+  // publishes sockets or creates persistent effect records.
+  void (async () => {
+    if (!cfg.enabled || !cfg.effect || !isSequencerAvailable()) return;
+    try {
+      const entry = globalThis.Sequencer.Database.getEntry(cfg.effect, {softFail:true});
+      const selected = Array.isArray(entry) ? entry[0] : entry;
+      let file = typeof selected?.getFile === 'function' ? await selected.getFile() : selected;
+      if (file && typeof file === 'object' && !Array.isArray(file)) file = file.file ?? file.path ?? file.src ?? file;
+      if (Array.isArray(file)) file = file[0];
+      if (pickerSession !== session || typeof file !== 'string'
+          || !/\.(?:webm|mp4|png|jpe?g|webp)(?:[?#].*)?$/i.test(file)) return;
+      let texture;
+      if (/\.(webm|mp4)(?:[?#].*)?$/i.test(file)) {
+        const video = document.createElement('video');
+        video.muted = true; video.loop = true; video.playsInline = true;
+        video.preload = 'auto'; video.src = file;
+        session.video = video;
+        await new Promise((resolve, reject) => {
+          video.addEventListener('loadeddata', resolve, {once:true});
+          video.addEventListener('error', reject, {once:true});
+          video.load();
+        });
+        if (pickerSession !== session) return;
+        texture = PIXI.Texture.from(video);
+        void video.play().catch(() => {});
+      } else texture = PIXI.Texture.from(file);
+      if (pickerSession !== session) return;
+      const sprite = new PIXI.Sprite(texture);
+      sprite.anchor.set(0.5);
+      sprite.eventMode = 'none';
+      sprite.alpha = 0.9;
+      canvas.interface.addChildAt(sprite, canvas.interface.getChildIndex(graphics));
+      session.sprite = sprite;
+      pickerRender(session);
+    } catch (error) {
+      console.warn(`${MODULE_ID} | GM-local FX canvas preview unavailable`, error);
+    }
+  })();
   const finish = () => {
     const result = { ...state };
     destroyPicker();
@@ -578,15 +657,22 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
     if (ev.button !== 0 || pickerSession !== session) return;
     const point = canvasPoint(ev);
     const b = pickerBounds(state);
-    const corners = pickerCorners(b);
+    const corners = pickerCorners(b, state);
     const zoom = Math.max(0.05, Math.abs(canvas.stage?.scale?.x ?? 1));
     const radius = 19 / zoom;
     const corner = Object.keys(corners).find((key) =>
       Math.hypot(point.x - corners[key].x, point.y - corners[key].y) <= radius);
-    if (corner) {
+    const rotationHandle = pickerRotationHandle(state, zoom);
+    if (Math.hypot(point.x - rotationHandle.x, point.y - rotationHandle.y) <= 20 / zoom) {
+      session.drag = { kind: 'rotate', initialAngle: Math.atan2(point.y - state.y, point.x - state.x),
+        initialRotation: state.rotation };
+    } else if (corner) {
       const anchor = corners[OPPOSITE_CORNER[corner]];
-      session.drag = { kind: "resize", anchor };
-    } else if (point.x >= b.left && point.x <= b.right && point.y >= b.top && point.y <= b.bottom) {
+      session.drag = { kind: "resize", anchor, aspect: state.width / state.height };
+    } else if ((() => {
+      const local = rotatePoint(point, state, -state.rotation);
+      return local.x >= b.left && local.x <= b.right && local.y >= b.top && local.y <= b.bottom;
+    })()) {
       session.drag = { kind: "move", offsetX: state.x - point.x, offsetY: state.y - point.y };
     } else return; // Do not intercept ordinary canvas interactions outside FX area.
     ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation();
@@ -597,17 +683,29 @@ export function editFXOnCanvas(tile, cfg, callback, onCancel = null) {
     if (session.drag.kind === "move") {
       state.x = point.x + session.drag.offsetX;
       state.y = point.y + session.drag.offsetY;
+    } else if (session.drag.kind === 'rotate') {
+      const angle = Math.atan2(point.y - state.y, point.x - state.x);
+      let degrees = normalizeAngle(session.drag.initialRotation + (angle - session.drag.initialAngle) * 180 / Math.PI);
+      if (ev.shiftKey) degrees = Math.round(degrees / 15) * 15;
+      state.rotation = degrees;
     } else {
       const anchor = session.drag.anchor;
       const grid = Number(canvas.scene?.grid?.size) || 100;
-      const dx = point.x - anchor.x;
-      const dy = point.y - anchor.y;
-      const widthPx = n(Math.abs(dx) / grid, state.width, 0.1, 100) * grid;
-      const heightPx = n(Math.abs(dy) / grid, state.height, 0.1, 100) * grid;
-      const directionX = dx < 0 ? -1 : 1;
-      const directionY = dy < 0 ? -1 : 1;
-      state.x = anchor.x + directionX * widthPx / 2;
-      state.y = anchor.y + directionY * heightPx / 2;
+      const rotated = rotatePoint(point, anchor, -state.rotation);
+      const dx = rotated.x - anchor.x, dy = rotated.y - anchor.y;
+      let widthPx = n(Math.abs(dx) / grid, state.width, 0.1, 100) * grid;
+      let heightPx = n(Math.abs(dy) / grid, state.height, 0.1, 100) * grid;
+      if (ev.shiftKey && session.drag.aspect > 0) {
+        const aspect = session.drag.aspect;
+        if (widthPx / heightPx > aspect) heightPx = widthPx / aspect;
+        else widthPx = heightPx * aspect;
+        const capped = Math.min(1, 100 * grid / widthPx, 100 * grid / heightPx);
+        widthPx *= capped; heightPx *= capped;
+      }
+      const localCenter = {x: anchor.x + Math.sign(dx || 1) * widthPx / 2,
+        y: anchor.y + Math.sign(dy || 1) * heightPx / 2};
+      const center = rotatePoint(localCenter, anchor, state.rotation);
+      state.x = center.x; state.y = center.y;
       state.width = widthPx / grid;
       state.height = heightPx / grid;
     }

@@ -12,7 +12,7 @@ import {
   TRIGGER_ZONE_ICON
 } from "./constants.mjs";
 import { requestTriggeredActorTransition } from "./navigation-service.mjs";
-import { emitVisualFX } from "./seqfx.mjs";
+import { emitVisualFX, stopTileFX } from "./seqfx.mjs";
 import { TRIGGER_AREA, containsTriggerArea, tokenInsideTriggerArea, scopedTriggerData, hasEffectConsequences } from "./trigger-areas.mjs";
 import { effectAreaIsActive, effectAreaSessionId, recordEffectAreaEntry, setEffectAreaActive } from "./effect-area-state.mjs";
 import { activateLinkedTargets, deactivateLinkedTargets, linkedIsActive } from "./linked-activation.mjs";
@@ -97,6 +97,8 @@ export function defaultTriggerData() {
     transitionOnEffectArea: false,
     transitionMode: "gm",
     activationMode: "enter",
+    gmAllowNoToken: false,
+    gmIgnoreDistance: false,
     toggleEnabled: false,
     toggleActive: false,
     effectActive: false,
@@ -171,6 +173,8 @@ export function triggerData(tile) {
     effectActive: enabledFlag(raw.effectActive, false),
     transitionMode: raw.transitionMode === 'automatic' ? 'automatic' : 'gm',
     activationMode: raw.activationMode === 'double' ? 'double' : 'enter',
+    gmAllowNoToken: enabledFlag(raw.gmAllowNoToken, false),
+    gmIgnoreDistance: enabledFlag(raw.gmIgnoreDistance, false),
     toggleEnabled: enabledFlag(raw.toggleEnabled, false),
     toggleActive: enabledFlag(raw.toggleActive, false),
     saveState: runtimeSaveState,
@@ -314,8 +318,9 @@ function queueToggle(trigger, task) {
   return current;
 }
 
-// A Toggle controls the ACTIVATION only. Saves, damage, transitions and
-// non-area Visual FX never get undone on OFF.
+// Toggle OFF deactivates the mechanisms and stops any FX owned by this Tile,
+// even for purely visual switches without mechanical Effect Area consequences.
+// Already resolved Saves, Damage and Transfers are never undone.
 export async function resetToggleActivation(trigger) {
   if (!isPrimaryGM() || !triggerData(trigger)?.toggleEnabled) return false;
   return queueToggle(trigger, () => closeToggleActivation(trigger));
@@ -329,6 +334,8 @@ export async function closeToggleActivation(trigger) {
   if (effectAreaIsActive(trigger) || trigger.getFlag(MODULE_ID, 'trigger')?.effectActive) {
     await setEffectAreaActive(trigger, false);
   }
+  // An FX-only Trigger has no Effect Area session; it must still end on OFF.
+  await stopTileFX(trigger);
   await deactivateLinkedTargets(trigger);
   return true;
 }
@@ -956,6 +963,35 @@ async function performRevealedDirectTransition(trigger, token, requesterId) {
   return requestTriggeredActorTransition({ sourceToken: token, targetScene, arrivalTile });
 }
 
+/** A primary GM may activate a double-click Trigger with no Token. This path
+ * is intentionally LOCAL ONLY: Socket payloads must never grant Tokenless-GM
+ * privileges based on an unverified requesterId. Token-specific consequences
+ * (Save/Damage/Transfer) are evaluated only on real Token interactions. */
+async function handleGmTokenlessTrigger(trigger) {
+  if (!isPrimaryGM() || !game.user?.isGM) return;
+  return queueToggle(trigger, async () => {
+    const data = triggerData(trigger);
+    if (!data || data.state === TRIGGER_STATES.DISABLED || !linkedIsActive(trigger)
+        || data.activationMode !== 'double' || !data.gmAllowNoToken) return;
+    if (data.toggleEnabled && data.toggleActive) {
+      await closeToggleActivation(trigger);
+      return;
+    }
+    if (data.toggleEnabled) {
+      await trigger.update({ [`flags.${MODULE_ID}.trigger.toggleActive`]: true },
+        { ctnTriggerState: true, ctnToggleState: true });
+    }
+    await activateLinkedTargets(trigger);
+    const hasRemoteArea = hasEffectConsequences(data);
+    const alreadyOpen = hasRemoteArea && effectAreaIsActive(trigger);
+    if (hasRemoteArea) await setEffectAreaActive(trigger, true);
+    if (!alreadyOpen) emitVisualFX(trigger, 'activation');
+    // No fictitious Token or pending chat resolution: source-only consequences
+    // will occur on real Token interactions, not on a Tokenless GM click.
+    if (shouldReveal(data, { saveResult: null }, 'trigger')) await revealTrigger(trigger);
+  });
+}
+
 async function handleTriggerEnter(message) {
   if (!isPrimaryGM()) return;
   const tile = resolveTile(message?.triggerUuid);
@@ -1257,9 +1293,17 @@ function onTriggerDoubleClick(event) {
     const gapY = Math.max(bounds.y - (t.y+t.height), t.y - (bounds.y+bounds.height), 0);
     return Math.hypot(gapX, gapY) <= grid;
   });
-  const token = inRange[0];
+  const data = triggerData(tile);
+  const eligible = game.user.isGM && data?.gmIgnoreDistance ? candidates : inRange;
+  const token = eligible[0];
   if (!token) {
-    ui.notifications.warn(game.i18n.localize('CTN.Trigger.ClickNeedsToken'));
+    // Only the primary GM can invoke the privileged Tokenless path locally;
+    // it is never exposed via the ordinary trigger-enter socket message.
+    if (game.user.isGM && data?.gmAllowNoToken && isPrimaryGM()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void handleGmTokenlessTrigger(tile);
+    } else ui.notifications.warn(game.i18n.localize('CTN.Trigger.ClickNeedsToken'));
     return;
   }
   event.preventDefault();

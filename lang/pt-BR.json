@@ -331,7 +331,7 @@
   "CTN.FX.Search": "Pesquisar efeitos instalados…",
   "CTN.FX.Results": "efeitos encontrados",
   "CTN.FX.OpenSceneFirst": "Abra a Scene do Tile antes de editar o FX no canvas.",
-  "CTN.FX.CanvasEditInstructions": "Arraste dentro para mover e pelos cantos para redimensionar. Aplicar (Enter) ou Cancelar (Esc).",
+  "CTN.FX.CanvasEditInstructions": "Mover: arraste dentro. Redimensionar: arraste um canto (Shift mantém proporções). Girar: alça redonda (Shift ajusta em 15°). Enter aplica; Esc cancela.",
   "CTN.FX.ApplyEditor": "Aplicar",
   "CTN.FX.CancelEditor": "Cancelar",
   "CTN.FX.ChoosePreview": "Selecione um efeito instalado para visualizar a animação.",
@@ -371,5 +371,9 @@
   "CTN.Trigger.ToggleActivation": "Alternar Ativação Liga / Desliga",
   "CTN.Trigger.ToggleOn": "LIGADO",
   "CTN.Trigger.ToggleOff": "DESLIGADO",
-  "CTN.Trigger.ToggleHint": "Alterna apenas a ativação. Áreas dependentes e Tiles vinculados podem desligar; salvaguardas, dano, transferências e FX pontuais não são revertidos. Após Gatilho é preservado, mas não atua no modo Alternar."
+  "CTN.Trigger.ToggleHint": "Alterna apenas a ativação. Áreas dependentes e Tiles vinculados podem desligar; salvaguardas, dano, transferências e FX pontuais não são revertidos. Após Gatilho é preservado, mas não atua no modo Alternar.",
+  "CTN.Trigger.GMNoToken": "Permitir acionamento pelo GM sem Token",
+  "CTN.Trigger.GMIgnoreDistance": "GM ignora distância do Token",
+  "CTN.Trigger.GMActivationHint": "Somente duplo clique. As permissões do GM não alteram a proximidade exigida dos jogadores.",
+  "CTN.FX.Rotation": "Rotação (somente visual)"
 }

@@ -1,3 +1,9 @@
+> **v1.1.16 compatibility:** Foundry **V14** remains the validated baseline. Foundry **V13.351+** is declared as **experimental pending functional QA**, not yet homologated. Test on a copy of the World before production use. Optional Sequencer/JB2A must also be compatible with your installed Foundry version.
+>
+> **v1.1.16 FX editor:** drag the round rotation handle to rotate the **visual effect only**; a locally animated preview is displayed in the editor when the installed asset can be resolved. Shift-resize locks the current aspect ratio; Shift-rotate snaps to 15°. The underlying mechanical Effect Area remains axis-aligned and unchanged by rotation.
+>
+> **v1.1.16 GM controls:** on double-click Trigger Tiles, the GM may optionally bypass proximity or act without any Token. These permissions do not extend to players. Tokenless activations cannot perform Saves, Damage or Transfer upon a nonexistent Token.
+
 # Canvas Tile Navigation
 
 ### Toggle Activation (v1.1.15)

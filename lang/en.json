@@ -331,7 +331,7 @@
   "CTN.FX.Search": "Search installed effects…",
   "CTN.FX.Results": "matching effects",
   "CTN.FX.OpenSceneFirst": "Open the Tile’s Scene before editing its FX on the canvas.",
-  "CTN.FX.CanvasEditInstructions": "Drag inside to move; drag any corner to resize width and height. Apply (Enter) or Cancel (Esc).",
+  "CTN.FX.CanvasEditInstructions": "Move: drag inside. Resize: drag a corner (Shift keeps proportions). Rotate: drag the round handle (Shift snaps 15°). Enter applies; Esc cancels.",
   "CTN.FX.ApplyEditor": "Apply",
   "CTN.FX.CancelEditor": "Cancel",
   "CTN.FX.ChoosePreview": "Select an installed effect to preview it.",
@@ -371,5 +371,9 @@
   "CTN.Trigger.ToggleActivation": "Toggle Activation On / Off",
   "CTN.Trigger.ToggleOn": "ON",
   "CTN.Trigger.ToggleOff": "OFF",
-  "CTN.Trigger.ToggleHint": "Only the activation switches ON/OFF. Dependent areas and linked Tiles can close; Save, Damage, transfers and one-shot FX are never undone. After Trigger is retained but ignored in Toggle mode."
+  "CTN.Trigger.ToggleHint": "Only the activation switches ON/OFF. Dependent areas and linked Tiles can close; Save, Damage, transfers and one-shot FX are never undone. After Trigger is retained but ignored in Toggle mode.",
+  "CTN.Trigger.GMNoToken": "Allow GM activation without a Token",
+  "CTN.Trigger.GMIgnoreDistance": "GM ignores Token distance",
+  "CTN.Trigger.GMActivationHint": "Double-click only. GM permissions do not change player proximity requirements.",
+  "CTN.FX.Rotation": "Rotation (visual only)"
 }

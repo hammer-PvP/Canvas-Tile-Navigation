@@ -60,6 +60,8 @@ export function fxConfigHTML(tile) {
       <div class="form-group"><label>${escape(label("WidthHeight"))}</label>
         <div class="form-fields">${input("width",cfg.width,"number", 'min="0.1" max="100" step="0.1"')} × ${input("height",cfg.height,"number", 'min="0.1" max="100" step="0.1"')}
         <span class="ctn-fx-units">${escape(label("GridUnits"))}</span></div></div>
+      <div class="form-group"><label>${escape(label("Rotation"))}</label><div class="form-fields">
+        ${input("rotation",cfg.rotation,"number", 'min="-360" max="360" step="1"')} °</div></div>
       <div class="form-group"><label>${escape(label("CanvasEditor"))}</label><div class="form-fields">
         <button type="button" data-ctn-fx-canvas><i class="fa-solid fa-up-down-left-right"></i> ${escape(label("EditCanvas"))}</button></div></div>
       <p class="hint">${escape(label("CanvasHint"))}</p>
@@ -104,6 +106,7 @@ function liveConfig(tile, root) {
     otherTileUuid: select("otherTileUuid") ?? cfg.otherTileUuid,
     point: { x: Number(get("point.x")) || 0, y: Number(get("point.y")) || 0 },
     width: num("width",cfg.width), height: num("height",cfg.height),
+    rotation: get("rotation") === undefined ? cfg.rotation : Number(get("rotation")) || 0,
     lifetime: select("lifetime") ?? cfg.lifetime, seconds: num("seconds",cfg.seconds),
     fadeIn: Number(get("fadeIn")) || 0, fadeOut: Number(get("fadeOut")) || 0,
     endMode: select("endMode") ?? cfg.endMode, repeat: select("repeat") ?? cfg.repeat
@@ -359,11 +362,12 @@ export function wireFXConfig(container, tile, application) {
       ui.notifications.warn(label("OpenSceneFirst")); return;
     }
     await application.minimize?.();
-    const started = editFXOnCanvas(tile, cfg, ({ x, y, width, height }) => {
+    const started = editFXOnCanvas(tile, cfg, ({ x, y, width, height, rotation }) => {
       updateInput(root, "point.x", Math.round(x));
       updateInput(root, "point.y", Math.round(y));
       updateInput(root, "width", Math.round(width * 10) / 10);
       updateInput(root, "height", Math.round(height * 10) / 10);
+      updateInput(root, "rotation", Math.round(rotation));
       position.value = "custom";
       position.dispatchEvent(new Event("change", { bubbles: true }));
       void application.maximize?.();
