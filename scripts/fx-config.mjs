@@ -2,7 +2,7 @@
 import { MODULE_ID } from "./constants.mjs";
 import {
   FX_LIFETIMES, editFXOnCanvas, fxCenter, fxConfig, fxEventsFor,
-  isSequencerAvailable, jb2aPaths, playTileFX, stopTileFX
+  isSequencerAvailable, jb2aPaths, playTileFX, stopTileFX, parseFXLayers, parseLayerOrder
 } from "./seqfx.mjs";
 import { resolveTile } from "./route-service.mjs";
 import { effectAreaIsActive, setEffectAreaActive } from "./effect-area-state.mjs";
@@ -14,6 +14,39 @@ const field = (key) => `flags.${MODULE_ID}.visualFX.${key}`;
 const opt = (value, title, selected) => `<option value="${escape(value)}"${value === selected ? " selected" : ""}>${escape(title)}</option>`;
 const input = (name, value, type = "number", attrs = "") =>
   `<input type="${type}" data-ctn-fx-value="${escape(name)}" name="${field(name)}" value="${escape(value)}" ${attrs}>`;
+
+/** Additional visual layers are form-only controls except for the single
+ * serialized JSON flag. They cannot create mechanical interaction areas. */
+function layerHTML(layer, index, positionOpts, otherTiles) {
+  const uid = escape(layer.id);
+  const textInput = (field, value, type = "text", attrs = "") =>
+    `<input type="${type}" data-ctn-layer-field="${field}" value="${escape(value)}" ${attrs}>`;
+  return `<details class="ctn-fx-layer" data-ctn-fx-layer="${uid}">
+    <summary><span class="ctn-fx-layer-title">${escape(label("Layer"))} ${index + 1} · <span data-ctn-fx-layer-summary>${escape(layer.effect || label("Unconfigured"))}</span></span>
+      <span class="ctn-fx-layer-actions"><button type="button" data-ctn-fx-up title="${escape(label("MoveUp"))}">↑</button>
+      <button type="button" data-ctn-fx-down title="${escape(label("MoveDown"))}">↓</button>
+      <button type="button" data-ctn-fx-remove title="${escape(label("RemoveLayer"))}">×</button></span></summary>
+    <div class="ctn-fx-layer-fields">
+      <div class="form-group"><label>${escape(label("Effect"))}</label><div class="form-fields ctn-fx-file">
+        ${textInput("effect", layer.effect, "text", 'placeholder="jb2a..."')}
+        <button type="button" data-ctn-fx-layer-browse title="${escape(label("Browse"))}"><i class="fa-solid fa-magnifying-glass"></i></button>
+        <button type="button" data-ctn-fx-layer-preview title="${escape(label("Preview"))}"><i class="fa-solid fa-play"></i></button></div></div>
+      <div class="form-group"><label>${escape(label("Position"))}</label><div class="form-fields">
+        <select data-ctn-layer-field="position">${positionOpts.map(([id,k])=>opt(id,label(k),layer.position)).join("")}</select></div></div>
+      <div class="form-group" data-ctn-layer-other><label>${escape(label("OtherTile"))}</label>
+        <div class="form-fields"><select data-ctn-layer-field="otherTileUuid">${opt("",label("SelectTile"),layer.otherTileUuid)}${otherTiles.map(([v,k])=>opt(v,k,layer.otherTileUuid)).join("")}</select></div></div>
+      <div class="form-group" data-ctn-layer-custom><label>${escape(label("Coordinates"))}</label>
+        <div class="form-fields">${textInput("point.x",layer.point.x,"number",'step="1"')} ${textInput("point.y",layer.point.y,"number",'step="1"')}</div></div>
+      <div class="form-group"><label>${escape(label("WidthHeight"))}</label>
+        <div class="form-fields">${textInput("width",layer.width,"number",'min="0.1" max="100" step="0.1"')} ×
+        ${textInput("height",layer.height,"number",'min="0.1" max="100" step="0.1"')} ${escape(label("GridUnits"))}</div></div>
+      <div class="form-group"><label>${escape(label("Rotation"))}</label>
+        <div class="form-fields">${textInput("rotation",layer.rotation,"number",'min="-360" max="360" step="1"')} °</div></div>
+      <div class="form-group"><label>${escape(label("CanvasEditor"))}</label><div class="form-fields">
+        <button type="button" data-ctn-fx-layer-canvas><i class="fa-solid fa-up-down-left-right"></i> ${escape(label("EditCanvas"))}</button></div></div>
+    </div>
+  </details>`;
+}
 
 export function fxConfigHTML(tile) {
   const cfg = fxConfig(tile);
@@ -35,7 +68,7 @@ export function fxConfigHTML(tile) {
   const otherTiles = [...(tile.parent?.tiles ?? [])]
     .filter((other) => other.id !== tile.id)
     .sort((a,b) => String(a.name ?? a.id).localeCompare(String(b.name ?? b.id)))
-    .map((other) => opt(other.uuid, other.name ?? other.id, cfg.otherTileUuid)).join("");
+    .map((other) => [other.uuid, other.name ?? other.id]);
   return `<fieldset class="ctn-config ctn-fx-config" data-ctn-fx-config>
     <legend><i class="fa-solid fa-wand-magic-sparkles"></i> ${escape(label("VisualEffects"))}</legend>
     <div class="form-group"><label>${escape(label("Enable"))}</label>
@@ -43,26 +76,45 @@ export function fxConfigHTML(tile) {
         <input type="checkbox" data-ctn-fx-enabled ${cfg.enabled ? "checked" : ""}></div></div>
     <div data-ctn-fx-body ${cfg.enabled ? "" : "hidden"}>
       <p class="hint">${escape(active ? label("DependencyReady") : label("MissingSequencer"))}</p>
+      <input type="hidden" data-ctn-fx-layers-json name="${field("layers")}" value="${escape(JSON.stringify(cfg.layers))}">
+      <input type="hidden" data-ctn-fx-layer-order name="${field("layerOrder")}" value="${escape(JSON.stringify(cfg.layerOrder))}">
+      <div class="ctn-fx-layers" data-ctn-fx-layers>
+      <details class="ctn-fx-layer" data-ctn-fx-layer="primary">
+        <summary><span class="ctn-fx-layer-title">${escape(label("Layer"))} 1 · <span data-ctn-fx-layer-summary>${escape(cfg.effect || label("Unconfigured"))}</span></span>
+          <span class="ctn-fx-layer-actions"><button type="button" data-ctn-fx-up title="${escape(label("MoveUp"))}">↑</button>
+          <button type="button" data-ctn-fx-down title="${escape(label("MoveDown"))}">↓</button></span></summary>
+        <div class="ctn-fx-layer-fields">
       <div class="form-group"><label>${escape(label("Effect"))}</label><div class="form-fields ctn-fx-file">
         ${input("effect", cfg.effect, "text", 'data-ctn-fx-effect placeholder="jb2a..."')}
         <button type="button" data-ctn-fx-browse title="${escape(label("Browse"))}"><i class="fa-solid fa-magnifying-glass"></i></button>
         <button type="button" data-ctn-fx-preview title="${escape(label("Preview"))}"><i class="fa-solid fa-play"></i></button>
       </div></div>
-      <div class="form-group"><label>${escape(label("Event"))}</label><div class="form-fields">
-        <select name="${field("event")}">${eventOptions}</select></div></div>
       <hr class="ctn-fx-separator">
       <div class="form-group"><label>${escape(label("Position"))}</label><div class="form-fields">
         <select data-ctn-fx-position name="${field("position")}">${positionOpts}</select></div></div>
       <div class="form-group" data-ctn-fx-other-row><label>${escape(label("OtherTile"))}</label><div class="form-fields">
-        <select name="${field("otherTileUuid")}">${opt("", label("SelectTile"), cfg.otherTileUuid)}${otherTiles}</select></div></div>
+        <select name="${field("otherTileUuid")}">${opt("", label("SelectTile"), cfg.otherTileUuid)}${otherTiles.map(([v, name]) => opt(v, name, cfg.otherTileUuid)).join("")}</select></div></div>
       <div class="form-group" data-ctn-fx-custom-row><label>${escape(label("Coordinates"))}</label>
         <div class="form-fields">${input("point.x",cfg.point.x)} ${input("point.y",cfg.point.y)}</div></div>
       <div class="form-group"><label>${escape(label("WidthHeight"))}</label>
         <div class="form-fields">${input("width",cfg.width,"number", 'min="0.1" max="100" step="0.1"')} × ${input("height",cfg.height,"number", 'min="0.1" max="100" step="0.1"')}
         <span class="ctn-fx-units">${escape(label("GridUnits"))}</span></div></div>
+      <div class="form-group"><label>${escape(label("Rotation"))}</label><div class="form-fields">
+        ${input("rotation",cfg.rotation,"number", 'min="-360" max="360" step="1"')} °</div></div>
       <div class="form-group"><label>${escape(label("CanvasEditor"))}</label><div class="form-fields">
         <button type="button" data-ctn-fx-canvas><i class="fa-solid fa-up-down-left-right"></i> ${escape(label("EditCanvas"))}</button></div></div>
       <p class="hint">${escape(label("CanvasHint"))}</p>
+        </div>
+      </details>
+      ${cfg.layers.map((layer,index) => layerHTML(layer,index+1,[["tile","CenterTile"],["custom","CustomScene"],["other","OtherTile"]],otherTiles)).join("")}
+      </div>
+      <div class="ctn-fx-layer-footer"><button type="button" data-ctn-fx-add-layer><i class="fa-solid fa-plus"></i> ${escape(label("AddLayer"))}</button>
+        <button type="button" data-ctn-fx-preview-stack><i class="fa-solid fa-play"></i> ${escape(label("PreviewStack"))}</button>
+        <button type="button" data-ctn-fx-expand-all>${escape(label("ExpandAll"))}</button>
+        <button type="button" data-ctn-fx-collapse-all>${escape(label("CollapseAll"))}</button></div>
+      <p class="hint">${escape(label("LayersHint"))}</p>
+      <div class="form-group"><label>${escape(label("Event"))}</label><div class="form-fields">
+        <select name="${field("event")}">${eventOptions}</select></div></div>
       ${cfg.kind === "transition" ? `<div class="form-group ctn-fx-interaction"><label>${escape(label("InteractionArea"))}</label>
         <div class="form-fields"><input type="hidden" data-ctn-fx-interaction-value name="${field("interactionAtFX")}" value="${cfg.interactionAtFX ? "true" : "false"}">
           <label class="ctn-fx-interaction-choice"><input type="checkbox" data-ctn-fx-interaction ${cfg.interactionAtFX ? "checked" : ""}>
@@ -104,9 +156,12 @@ function liveConfig(tile, root) {
     otherTileUuid: select("otherTileUuid") ?? cfg.otherTileUuid,
     point: { x: Number(get("point.x")) || 0, y: Number(get("point.y")) || 0 },
     width: num("width",cfg.width), height: num("height",cfg.height),
+    rotation: get("rotation") === undefined ? cfg.rotation : Number(get("rotation")) || 0,
     lifetime: select("lifetime") ?? cfg.lifetime, seconds: num("seconds",cfg.seconds),
     fadeIn: Number(get("fadeIn")) || 0, fadeOut: Number(get("fadeOut")) || 0,
-    endMode: select("endMode") ?? cfg.endMode, repeat: select("repeat") ?? cfg.repeat
+    endMode: select("endMode") ?? cfg.endMode, repeat: select("repeat") ?? cfg.repeat,
+    layers: parseFXLayers(root.querySelector("[data-ctn-fx-layers-json]")?.value ?? cfg.layers),
+    layerOrder: parseLayerOrder(root.querySelector("[data-ctn-fx-layer-order]")?.value ?? cfg.layerOrder)
   };
 }
 function updateInput(root, name, value) {
@@ -326,6 +381,135 @@ export function wireFXConfig(container, tile, application) {
     interactionValue.value = interactionToggle.checked ? "true" : "false";
     interactionValue.dispatchEvent(new Event("change", { bubbles: true }));
   });
+  // Keep extra layers serialized in one flag; all other (primary) fields
+  // retain their original Foundry form names and meaning.
+  const layerHost = root.querySelector("[data-ctn-fx-layers]");
+  const layerJson = root.querySelector("[data-ctn-fx-layers-json]");
+  const layerOrder = root.querySelector("[data-ctn-fx-layer-order]");
+  const otherTiles = [...(tile.parent?.tiles ?? [])].filter(t => t.id !== tile.id)
+    .map(t => [t.uuid, t.name ?? t.id]);
+  const positionChoices = [["tile", "CenterTile"], ["custom", "CustomScene"], ["other", "OtherTile"]];
+  const layerRows = () => [...layerHost.querySelectorAll(":scope > [data-ctn-fx-layer]")];
+  const extractLayer = (row) => {
+    const value = key => row.querySelector(`[data-ctn-layer-field="${key}"]`)?.value ?? "";
+    return {
+      id: row.dataset.ctnFxLayer,
+      effect: value("effect").trim(), position: value("position"),
+      otherTileUuid: value("otherTileUuid"),
+      point: { x: Number(value("point.x")) || 0, y: Number(value("point.y")) || 0 },
+      width: Number(value("width")) || 3, height: Number(value("height")) || 3,
+      rotation: Number(value("rotation")) || 0
+    };
+  };
+  const syncLayers = () => {
+    if (!layerHost) return;
+    const rows = layerRows();
+    const extras = rows.filter(row => row.dataset.ctnFxLayer !== "primary").map(extractLayer);
+    layerJson.value = JSON.stringify(extras);
+    layerOrder.value = JSON.stringify(rows.map(row => row.dataset.ctnFxLayer));
+    rows.forEach((row, index) => {
+      const name = row.dataset.ctnFxLayer === "primary"
+        ? root.querySelector('[data-ctn-fx-value="effect"]')?.value
+        : row.querySelector('[data-ctn-layer-field="effect"]')?.value;
+      row.querySelector("[data-ctn-fx-layer-summary]").textContent = `${name || label("Unconfigured")}`;
+      row.querySelector(".ctn-fx-layer-title").firstChild.textContent = `${label("Layer")} ${index + 1} · `;
+      row.querySelector("[data-ctn-fx-up]").disabled = index === 0;
+      row.querySelector("[data-ctn-fx-down]").disabled = index === rows.length - 1;
+    });
+    layerJson.dispatchEvent(new Event("change", { bubbles: true }));
+    layerOrder.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const wireLayer = row => {
+    if (row.dataset.ctnLayerWired) return;
+    row.dataset.ctnLayerWired = "true";
+    const primary = row.dataset.ctnFxLayer === "primary";
+    const read = () => primary ? liveConfig(tile, root) : {
+      ...liveConfig(tile, root), ...extractLayer(row), enabled: true, layers: [], layerOrder: []
+    };
+    row.querySelector("summary")?.addEventListener("click", ev => {
+      if (!ev.target.closest("button")) return;
+      ev.preventDefault();
+    });
+    row.querySelector("[data-ctn-fx-up]")?.addEventListener("click", () => {
+      const prev = row.previousElementSibling;
+      if (prev?.matches("[data-ctn-fx-layer]")) layerHost.insertBefore(row, prev);
+      syncLayers();
+    });
+    row.querySelector("[data-ctn-fx-down]")?.addEventListener("click", () => {
+      const next = row.nextElementSibling;
+      if (next?.matches("[data-ctn-fx-layer]")) layerHost.insertBefore(next, row);
+      syncLayers();
+    });
+    row.querySelector("[data-ctn-fx-remove]")?.addEventListener("click", () => { row.remove(); syncLayers(); });
+    row.querySelectorAll("[data-ctn-layer-field]").forEach(el => {
+      el.addEventListener("input", syncLayers);
+      el.addEventListener("change", () => { refreshLayerPosition(row); syncLayers(); });
+    });
+    row.querySelector("[data-ctn-fx-layer-browse]")?.addEventListener("click", () => {
+      const el = row.querySelector('[data-ctn-layer-field="effect"]');
+      openEffectBrowser(path => { el.value = path; syncLayers(); }, el.value);
+    });
+    row.querySelector("[data-ctn-fx-layer-preview]")?.addEventListener("click", () => {
+      if (!isSequencerAvailable()) { ui.notifications.warn(label("MissingSequencer")); return; }
+      const cfg = read();
+      void playTileFX(tile, { event: cfg.event, preview: true, override: {...cfg, layers: [], layerOrder: []} });
+    });
+    row.querySelector("[data-ctn-fx-layer-canvas]")?.addEventListener("click", async () => {
+      const cfg = read();
+      if (canvas?.scene?.id !== tile.parent?.id) { ui.notifications.warn(label("OpenSceneFirst")); return; }
+      await application.minimize?.();
+      const started = editFXOnCanvas(tile, cfg, ({ x, y, width, height, rotation }) => {
+        const values = { "point.x": Math.round(x), "point.y": Math.round(y),
+          width: Math.round(width * 10) / 10, height: Math.round(height * 10) / 10,
+          rotation: Math.round(rotation), position: "custom" };
+        for (const [key, value] of Object.entries(values)) {
+          const el = row.querySelector(`[data-ctn-layer-field="${key}"]`);
+          if (el) el.value = String(value);
+        }
+        refreshLayerPosition(row); syncLayers();
+        void application.maximize?.();
+      }, () => void application.maximize?.());
+      if (!started) { void application.maximize?.(); ui.notifications.warn(label("OpenSceneFirst")); }
+      else ui.notifications.info(label("CanvasHint"));
+    });
+    refreshLayerPosition(row);
+  };
+  const refreshLayerPosition = row => {
+    if (row.dataset.ctnFxLayer === "primary") return;
+    const value = row.querySelector('[data-ctn-layer-field="position"]')?.value;
+    row.querySelector('[data-ctn-layer-other]').hidden = value !== 'other';
+    row.querySelector('[data-ctn-layer-custom]').hidden = value !== 'custom';
+  };
+  // Reorder the *elements* according to the stored stack, including primary.
+  const storedOrder = parseLayerOrder(layerOrder?.value);
+  if (storedOrder.length) {
+    const initialRows = layerRows();
+    const naturalRank = new Map(initialRows.map((row, i) => [row.dataset.ctnFxLayer, i]));
+    initialRows.sort((a, b) => {
+      const ai = storedOrder.indexOf(a.dataset.ctnFxLayer);
+      const bi = storedOrder.indexOf(b.dataset.ctnFxLayer);
+      return (ai < 0 ? 1000 + naturalRank.get(a.dataset.ctnFxLayer) : ai)
+        - (bi < 0 ? 1000 + naturalRank.get(b.dataset.ctnFxLayer) : bi);
+    }).forEach(row => layerHost.append(row));
+  }
+  layerRows().forEach(wireLayer);
+  root.querySelector('[data-ctn-fx-add-layer]')?.addEventListener('click', () => {
+    if (layerRows().length >= 16) { ui.notifications.warn(label("LayerLimit")); return; }
+    const base = liveConfig(tile, root);
+    const center = fxCenter(tile, base);
+    const layer = { id: foundry.utils.randomID(), effect: "", position: "custom",
+      point: { x: center.x, y: center.y }, otherTileUuid: "",
+      width: base.width, height: base.height, rotation: base.rotation };
+    const holder = document.createElement("div");
+    holder.innerHTML = layerHTML(layer, layerRows().length, positionChoices, otherTiles);
+    const element = holder.firstElementChild;
+    element.open = true;
+    layerHost.append(element); wireLayer(element); syncLayers();
+  });
+  root.querySelector('[data-ctn-fx-expand-all]')?.addEventListener('click', () => layerRows().forEach(row => { row.open = true; }));
+  root.querySelector('[data-ctn-fx-collapse-all]')?.addEventListener('click', () => layerRows().forEach(row => { row.open = false; }));
+  root.querySelector('[data-ctn-fx-value="effect"]')?.addEventListener('input', syncLayers);
+  syncLayers();
   const refresh = () => {
     enabledField.value = enabled.checked ? "true" : "false";
     body.hidden = !enabled.checked;
@@ -345,6 +529,11 @@ export function wireFXConfig(container, tile, application) {
   root.querySelector("[data-ctn-fx-preview]")?.addEventListener("click", () => {
     const cfg = liveConfig(tile, root);
     if (!isSequencerAvailable()) { ui.notifications.warn(label("MissingSequencer")); return; }
+    void playTileFX(tile, { event: cfg.event, preview: true, override: { ...cfg, layers: [], layerOrder: [] } });
+  });
+  root.querySelector("[data-ctn-fx-preview-stack]")?.addEventListener("click", () => {
+    const cfg = liveConfig(tile, root);
+    if (!isSequencerAvailable()) { ui.notifications.warn(label("MissingSequencer")); return; }
     void playTileFX(tile, { event: cfg.event, preview: true, override: cfg });
   });
   root.querySelector("[data-ctn-fx-stop]")?.addEventListener("click", () => {
@@ -359,11 +548,12 @@ export function wireFXConfig(container, tile, application) {
       ui.notifications.warn(label("OpenSceneFirst")); return;
     }
     await application.minimize?.();
-    const started = editFXOnCanvas(tile, cfg, ({ x, y, width, height }) => {
+    const started = editFXOnCanvas(tile, cfg, ({ x, y, width, height, rotation }) => {
       updateInput(root, "point.x", Math.round(x));
       updateInput(root, "point.y", Math.round(y));
       updateInput(root, "width", Math.round(width * 10) / 10);
       updateInput(root, "height", Math.round(height * 10) / 10);
+      updateInput(root, "rotation", Math.round(rotation));
       position.value = "custom";
       position.dispatchEvent(new Event("change", { bubbles: true }));
       void application.maximize?.();

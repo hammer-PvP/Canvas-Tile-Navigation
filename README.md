@@ -1,3 +1,9 @@
+> **v1.1.16 compatibility:** Foundry **V14** remains the validated baseline. Foundry **V13.351+** is declared as **experimental pending functional QA**, not yet homologated. Test on a copy of the World before production use. Optional Sequencer/JB2A must also be compatible with your installed Foundry version.
+>
+> **v1.1.16 FX editor:** drag the round rotation handle to rotate the **visual effect only**; a locally animated preview is displayed in the editor when the installed asset can be resolved. Shift-resize locks the current aspect ratio; Shift-rotate snaps to 15°. The underlying mechanical Effect Area remains axis-aligned and unchanged by rotation.
+>
+> **v1.1.16 GM controls:** on double-click Trigger Tiles, the GM may optionally bypass proximity or act without any Token. These permissions do not extend to players. Tokenless activations cannot perform Saves, Damage or Transfer upon a nonexistent Token.
+
 # Canvas Tile Navigation
 
 ### Toggle Activation (v1.1.15)
@@ -633,3 +639,7 @@ Trigger Tiles now distinguish the **original Tile as the activation mechanism** 
 Select **On Token Enter** or **Double-click Tile** to activate the original Trigger. Player double-click requires a visible Tile and an assigned Token near the mechanism. **Transfer Mode → Automatic** moves the eligible Token using the existing scene and arrival transfer flow; **GM Confirmation** keeps the chat action. The Save for an effect-area consequence belongs to the Token entering the area; a Save set on the original Tile is independent. Save-based damage/transition conditions apply only where the Save is configured.
 
 **Linked Activation** remains an optional advanced capability for enabling a separate Trigger or Transition Tile from another same-scene Trigger; it is **not** required for a Trigger to open its own remote FX area. Existing Transition Tiles still use their own interaction-area setting. This release does not add multi-stage Intro/Loop/Outro effects, adjust FX playback re-entry timing, or modify damage automation.
+
+### Visual FX stack (v1.1.17 QA)
+
+A Tile may now play multiple JB2A effects as a single visual activation. The original FX remains the primary effect and defines any existing CTN mechanical Effect Area. Additional collapsed/expandable visual layers inherit the event and lifetime of the primary effect; each has an independently editable position, size and rotation and a stack position chosen with the up/down arrows. To open the Canvas editor, expand the chosen layer and use its Edit Position / Size button. A new layer begins stacked at the primary effect's current position. Only installed JB2A Database entries are played. Max: 16 layers per Tile. The feature does not implement Intro/Loop/Outro or separate timelines yet.

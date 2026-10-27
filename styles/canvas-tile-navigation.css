@@ -405,3 +405,24 @@
 .ctn-effect-area-state .form-fields button { width: auto; min-width: 6rem; }
 .ctn-scene-search-fields { display: flex; flex-direction: column; align-items: stretch; gap: .2rem; }
 .ctn-scene-search-fields input[type="search"], .ctn-scene-search-fields select { width: 100%; min-width: 0; }
+
+
+/* 1.1.17: progressive single-group Visual FX layer stack. */
+.ctn-fx-config [hidden] { display: none !important; }
+.ctn-fx-layers { display: flex; flex-direction: column; gap: .32rem; margin: .35rem 0; }
+.ctn-fx-layer { border: 1px solid var(--color-border-light-tertiary, #666);
+  background: rgba(80, 95, 125, .07); border-radius: 5px; min-width: 0; }
+.ctn-fx-layer > summary { display: flex; align-items: center; justify-content: space-between;
+  gap: .3rem; padding: .4rem .5rem; cursor: pointer; list-style-position: inside;
+  min-height: 2.05rem; }
+.ctn-fx-layer > summary::marker { color: var(--color-text-light-secondary, #aaa); }
+.ctn-fx-layer-title { flex: 1; font-size: .86rem; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ctn-fx-layer-actions { display: inline-flex; gap: .15rem; flex-shrink: 0; }
+.ctn-fx-layer-actions button { height: 1.55rem; min-height: 1.55rem; width: 1.65rem;
+  padding: 0; line-height: 1; }
+.ctn-fx-layer-fields { padding: .4rem .5rem .55rem; border-top: 1px solid rgba(150,150,150,.25); }
+.ctn-fx-layer-fields .form-group { margin: .2rem 0; }
+.ctn-fx-layer-footer { display: flex; gap: .3rem; flex-wrap: wrap; margin: .25rem 0 .35rem; }
+.ctn-fx-layer-footer button { flex: 1 1 auto; min-width: 0; font-size: .8rem; }
+.ctn-fx-layer-fields input[data-ctn-layer-field="effect"] { min-width: 0; flex: 1 1 auto; }

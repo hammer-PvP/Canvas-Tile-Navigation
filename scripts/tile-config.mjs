@@ -218,6 +218,15 @@ function triggerConfigHTML(tile, data) {
         </label>
         <span class="ctn-toggle-state">${escapeHTML(localized(data.toggleActive ? 'CTN.Trigger.ToggleOn' : 'CTN.Trigger.ToggleOff'))}</span>
       </div>
+      <div class="ctn-gm-activation-options" data-ctn-gm-activation-options>
+        <label class="ctn-trigger-toggle"><input type="hidden" data-ctn-gm-no-token-value name="${base}.gmAllowNoToken" value="${data.gmAllowNoToken ? 'true' : 'false'}">
+          <input type="checkbox" data-ctn-gm-no-token ${data.gmAllowNoToken ? 'checked' : ''}>
+          ${escapeHTML(localized('CTN.Trigger.GMNoToken'))}</label>
+        <label class="ctn-trigger-toggle"><input type="hidden" data-ctn-gm-no-range-value name="${base}.gmIgnoreDistance" value="${data.gmIgnoreDistance ? 'true' : 'false'}">
+          <input type="checkbox" data-ctn-gm-no-range ${data.gmIgnoreDistance ? 'checked' : ''}>
+          ${escapeHTML(localized('CTN.Trigger.GMIgnoreDistance'))}</label>
+        <p class="hint">${escapeHTML(localized('CTN.Trigger.GMActivationHint'))}</p>
+      </div>
       <p class="hint" data-ctn-activation-toggle-hint hidden>${escapeHTML(localized('CTN.Trigger.ToggleHint'))}</p>
       <p class="hint" data-ctn-trigger-click-hidden hidden>${escapeHTML(localized('CTN.Trigger.HiddenClickHint'))}</p>
       <div class="form-group">
@@ -970,6 +979,16 @@ function wireTriggerConfig(container, tile) {
     const afterBody = root.querySelector('[data-ctn-trigger-after-body]');
     if (afterBody) afterBody.hidden = !!toggleActivation?.checked;
     const clicked = root.querySelector(`[name="flags.${MODULE_ID}.trigger.activationMode"]`)?.value === 'double';
+    const gmOptions = root.querySelector('[data-ctn-gm-activation-options]');
+    if (gmOptions) gmOptions.hidden = !clicked;
+    for (const [checkSelector, fieldSelector] of [
+      ['[data-ctn-gm-no-token]', '[data-ctn-gm-no-token-value]'],
+      ['[data-ctn-gm-no-range]', '[data-ctn-gm-no-range-value]']
+    ]) {
+      const checkbox = root.querySelector(checkSelector);
+      const field = root.querySelector(fieldSelector);
+      if (checkbox && field) field.value = checkbox.checked ? 'true' : 'false';
+    }
     const hiddenSource = root.querySelector(`[name="flags.${MODULE_ID}.trigger.initialVisibility"]`)?.value === TRIGGER_INITIAL_VISIBILITY.HIDDEN;
     const clickHint = root.querySelector('[data-ctn-trigger-click-hidden]');
     if (clickHint) clickHint.hidden = !(clicked && hiddenSource);
@@ -1070,6 +1089,8 @@ function wireTriggerConfig(container, tile) {
   arrivalSelect?.addEventListener("change", refresh);
   pause?.addEventListener("change", refresh);
   toggleActivation?.addEventListener('change', refresh);
+  root.querySelector('[data-ctn-gm-no-token]')?.addEventListener('change', refresh);
+  root.querySelector('[data-ctn-gm-no-range]')?.addEventListener('change', refresh);
   root.querySelector(`[name="flags.${MODULE_ID}.trigger.activationMode"]`)?.addEventListener('change', refresh);
   root.querySelector(`[name="flags.${MODULE_ID}.trigger.initialVisibility"]`)?.addEventListener('change', refresh);
   for (const input of Object.values(switches)) input.addEventListener("change", refresh);

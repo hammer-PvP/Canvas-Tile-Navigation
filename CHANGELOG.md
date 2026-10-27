@@ -1,3 +1,26 @@
+## v1.1.17 — Visual FX layers (QA candidate)
+
+- Added one Visual FX group with up to 16 independently configurable JB2A layers.
+- Each collapsible layer has its own JB2A selection, local preview, Canvas editor, position, size and rotation.
+- Move Up / Down controls determine Sequencer Z-index. Expand All / Collapse All are interface-only.
+- All configured layers start in parallel on the existing event and share the original lifetime, fade and repeat policy.
+- The original first effect remains mechanically authoritative: existing Effect Area, damage, saving throws and teleporting are unchanged. Extra layers are visual-only.
+- Older single-FX Tiles retain their original configuration without migration. Additional layers are stored in a separate JSON flag.
+- Corrected the playback angle sign so the Sequencer visual matches the GM's PixiJS editor orientation (requires Foundry QA).
+- Kept experimental Foundry V13 support and established V14 integration intact; no JB2A media distributed.
+
+**QA:** source-level regression and simulated Sequencer tests only. Not verified in a live Foundry world.
+
+## [1.1.16] — Trigger Toggle FX, GM Remote Control, FX Rotation, Foundry V13 (experimental) (2026-10-26)
+
+- Fix: Toggle OFF now explicitly terminates the Trigger's Visual FX even when no mechanical Effect Area, Save, Damage or Scene Transition is configured. Existing completed consequences are not reversed.
+- Trigger double-click: optional GM-only permissions to activate with no Token and/or ignore selected Token distance. Both default OFF for backwards compatibility. No-Token activation is primary-GM-local only and never uses the ordinary player request socket.
+- No-Token clicks control activation/linked mechanisms/Visual FX, without inventing an actor or applying Token-specific Save, Damage or Transfer.
+- Visual FX editor: rotation field, dedicated rotation handle, animated GM-local Pixi preview while moving, scaling and rotating, Shift for aspect-ratio resize and 15-degree angle snap, Apply/Cancel. Rotation changes presentation only, not the Trigger, Tile or Effect Area hitbox.
+- Runtime Sequencer FX applies the saved visual rotation. Existing Tiles default to 0 degrees.
+- Compatibility declaration: minimum Foundry V13.351, verified V14. V13 is **experimental/pending user QA**; v1.1.15 remains the approved V14 baseline.
+- No changes to navigation, One-Way Arrival, Trigger Save/Damage, Transition, Linked Activation, FX browser filtering or pagination.
+
 ## 1.1.15 — Toggle Activation (QA)
 
 ### Added
